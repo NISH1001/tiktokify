@@ -1,0 +1,206 @@
+"""Gradio web interface for TikTokify."""
+
+import asyncio
+import base64
+import os
+import tempfile
+from pathlib import Path
+
+import gradio as gr
+
+from tiktokify.cli import _main_async
+
+MODELS = ["", "gpt-4o-mini", "gpt-4o"]
+
+
+async def generate(
+    base_url: str,
+    api_key: str,
+    model: str,
+    max_depth: int,
+    n_key_points: int,
+    n_wiki: int,
+    temperature: float,
+    sources: list[str],
+    n_external: int,
+    content_weight: float,
+    metadata_weight: float,
+    top_k: int,
+    max_concurrent: int,
+    filter_meta_pages: bool,
+    limit: int | None,
+    save_cache: bool,
+    load_cache_file,
+):
+    """Run the TikTokify pipeline and return HTML file."""
+    if not base_url and not load_cache_file:
+        raise gr.Error("Blog URL is required (or upload a cache file)")
+
+    # Set API key
+    if api_key:
+        os.environ["OPENAI_API_KEY"] = api_key
+
+    # Create temp output files
+    with tempfile.NamedTemporaryFile(suffix=".html", delete=False) as f:
+        output_path = Path(f.name)
+
+    cache_path = None
+    if save_cache:
+        with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
+            cache_path = Path(f.name)
+
+    # Handle load from cache
+    load_cache_path = None
+    if load_cache_file is not None:
+        load_cache_path = Path(load_cache_file)
+
+    try:
+        await _main_async(
+            base_url=base_url or "https://placeholder.com",
+            output_html=output_path,
+            model=model if model else None,
+            n_key_points=n_key_points,
+            n_wiki=n_wiki,
+            sources=sources or [],
+            n_external=n_external,
+            content_weight=content_weight,
+            metadata_weight=metadata_weight,
+            top_k=top_k,
+            max_concurrent=max_concurrent,
+            max_depth=max_depth,
+            filter_meta_pages=filter_meta_pages,
+            temperature=temperature,
+            verbose=False,
+            limit=int(limit) if limit else None,
+            save_cache=cache_path,
+            load_cache=load_cache_path,
+        )
+    except Exception as e:
+        raise gr.Error(f"Generation failed: {e}")
+
+    # Read HTML content for preview (embed in iframe via data URL)
+    html_content = output_path.read_text()
+    html_b64 = base64.b64encode(html_content.encode()).decode()
+    iframe_html = f'<iframe src="data:text/html;base64,{html_b64}" style="width:100%;height:700px;border:1px solid #333;border-radius:8px;"></iframe>'
+
+    return str(output_path), iframe_html, str(cache_path) if cache_path else None
+
+
+def run_generate(*args):
+    """Sync wrapper for async generate."""
+    return asyncio.run(generate(*args))
+
+
+# Custom CSS for VSCode-like tabs
+custom_css = """
+.tabs {
+    border-bottom: none !important;
+}
+.tab-nav {
+    border-bottom: 1px solid #333 !important;
+    background: #1e1e1e !important;
+}
+.tab-nav button {
+    background: #2d2d2d !important;
+    border: none !important;
+    border-radius: 4px 4px 0 0 !important;
+    margin-right: 2px !important;
+    padding: 8px 16px !important;
+}
+.tab-nav button.selected {
+    background: #3c3c3c !important;
+    border-bottom: 2px solid #007acc !important;
+}
+"""
+
+with gr.Blocks(title="TikTokify", css=custom_css) as demo:
+    gr.Markdown("# TikTokify\nTransform any blog into a TikTok-style swipeable viewer")
+
+    # Output tabs at the top (VSCode-like)
+    with gr.Tabs() as output_tabs:
+        with gr.TabItem("Preview", id="preview"):
+            html_preview = gr.HTML(label="Preview", elem_classes=["preview-container"])
+        with gr.TabItem("Download HTML", id="html"):
+            output_file = gr.File(label="Download HTML")
+        with gr.TabItem("Download Cache", id="cache"):
+            cache_file = gr.File(label="Download Cache JSON (for reuse)")
+
+    gr.Markdown("---")
+
+    # Input section below
+    with gr.Row():
+        with gr.Column(scale=2):
+            base_url = gr.Textbox(
+                label="Blog URL",
+                placeholder="https://example.com/blog",
+                info="The website to crawl and transform",
+            )
+            api_key = gr.Textbox(
+                label="OpenAI API Key",
+                type="password",
+                placeholder="sk-...",
+                info="Required for LLM enrichment (key points, Wikipedia suggestions)",
+            )
+        with gr.Column(scale=1):
+            model = gr.Dropdown(
+                MODELS,
+                label="LLM Model",
+                value="gpt-4o-mini",
+                info="Leave empty to skip LLM enrichment",
+            )
+            max_depth = gr.Slider(
+                1, 5, value=1, step=1,
+                label="Crawl Depth",
+                info="1=seed URL only, 2+=follow links",
+            )
+
+    with gr.Accordion("LLM Enrichment", open=False):
+        with gr.Row():
+            n_key_points = gr.Slider(1, 10, value=5, step=1, label="Key Points per Post")
+            n_wiki = gr.Slider(0, 10, value=3, step=1, label="Wikipedia Suggestions")
+            temperature = gr.Slider(0, 1, value=0.5, step=0.1, label="Temperature")
+
+    with gr.Accordion("External Sources", open=False):
+        sources = gr.CheckboxGroup(
+            ["hackernews", "hn-frontpage", "links"],
+            label="Sources to Fetch",
+            info="Fetch related content from external sources",
+        )
+        n_external = gr.Slider(1, 10, value=3, step=1, label="Items per Source")
+
+    with gr.Accordion("Recommendation Engine", open=False):
+        with gr.Row():
+            content_weight = gr.Slider(0, 1, value=0.6, step=0.1, label="Content Weight (TF-IDF)")
+            metadata_weight = gr.Slider(0, 1, value=0.4, step=0.1, label="Metadata Weight (Tags)")
+            top_k = gr.Slider(1, 10, value=5, step=1, label="Recommendations per Post")
+
+    with gr.Accordion("Advanced", open=False):
+        with gr.Row():
+            max_concurrent = gr.Slider(1, 10, value=5, step=1, label="Max Concurrent Requests")
+            filter_meta_pages = gr.Checkbox(value=True, label="Filter Meta Pages")
+            limit = gr.Number(label="Post Limit (optional)", precision=0)
+        with gr.Row():
+            save_cache = gr.Checkbox(value=False, label="Save Cache (download JSON to reuse later)")
+            load_cache_file = gr.File(
+                label="Load from Cache (skip crawling)",
+                file_types=[".json"],
+                type="filepath",
+            )
+
+    generate_btn = gr.Button("Generate TikTokify Viewer", variant="primary", size="lg")
+
+    generate_btn.click(
+        fn=run_generate,
+        inputs=[
+            base_url, api_key, model, max_depth,
+            n_key_points, n_wiki, temperature,
+            sources, n_external,
+            content_weight, metadata_weight, top_k,
+            max_concurrent, filter_meta_pages, limit,
+            save_cache, load_cache_file,
+        ],
+        outputs=[output_file, html_preview, cache_file],
+    )
+
+if __name__ == "__main__":
+    demo.launch()
