@@ -85,6 +85,11 @@ console = Console()
     help="Spider crawl depth (1=seed only, 2=seed+linked pages, etc.)",
 )
 @click.option(
+    "--filter-meta-pages/--no-filter-meta-pages",
+    default=True,
+    help="Filter out meta pages (tags, categories, about, etc.) from results",
+)
+@click.option(
     "--verbose",
     "-v",
     is_flag=True,
@@ -103,6 +108,7 @@ def main(
     top_k: int,
     max_concurrent: int,
     max_depth: int,
+    filter_meta_pages: bool,
     verbose: bool,
 ) -> None:
     """
@@ -134,6 +140,7 @@ def main(
             top_k=top_k,
             max_concurrent=max_concurrent,
             max_depth=max_depth,
+            filter_meta_pages=filter_meta_pages,
             verbose=verbose,
         )
     )
@@ -152,6 +159,7 @@ async def _main_async(
     top_k: int,
     max_concurrent: int,
     max_depth: int,
+    filter_meta_pages: bool,
     verbose: bool,
 ) -> None:
     """Async main function."""
@@ -201,6 +209,29 @@ async def _main_async(
             return
 
         console.print(f"  [green]✓[/green] Found {len(posts)} posts")
+
+        # Step 1.5: Relevancy filtering (optional)
+        if filter_meta_pages:
+            from tiktokify.relevancy import RelevancyClassifier
+
+            original_count = len(posts)
+            task = progress.add_task("Filtering meta pages...", total=None)
+            classifier = RelevancyClassifier(
+                model=model,
+                max_concurrent=max_concurrent,
+                verbose=verbose,
+            )
+            posts = await classifier.classify_posts(posts)
+            progress.remove_task(task)
+            filtered_count = original_count - len(posts)
+            console.print(
+                f"  [green]✓[/green] Filtered to {len(posts)} content pages "
+                f"(removed {filtered_count} meta pages)"
+            )
+
+        if not posts:
+            console.print("[red]Error: No content posts after filtering![/red]")
+            return
 
         # Step 2: Build recommendations
         task = progress.add_task("Building recommendation graph...", total=None)

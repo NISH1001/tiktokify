@@ -48,6 +48,16 @@ class Post(BaseModel):
     content_html: str = Field(default="", description="Full HTML content")
     reading_time_minutes: int = Field(default=1)
 
+    # Relevancy classification (populated during filtering phase)
+    is_relevant: bool = Field(
+        default=True,
+        description="Whether this is content vs meta page (tags, categories, etc.)",
+    )
+    relevancy_reason: str = Field(
+        default="",
+        description="Explanation of relevancy classification",
+    )
+
     # Populated during enrichment phase
     key_points: list[str] = Field(
         default_factory=list, description="LLM-generated key points/summary"
