@@ -106,13 +106,17 @@ def classify_by_url(url: str) -> tuple[RelevancyResult, str]:
     if re.search(r"/(posts?|blog|articles?)/[^/]+", path, re.IGNORECASE):
         return RelevancyResult.RELEVANT, "URL contains content path prefix"
 
-    # - Path has a meaningful slug (long hyphenated segment)
+    # - Ends in .html (common for static site generators, org-roam, braindumps)
+    if path.endswith(".html"):
+        return RelevancyResult.RELEVANT, "URL ends in .html (likely content page)"
+
+    # - Path has a meaningful slug (long segment with hyphens or underscores)
     segments = [s for s in path.split("/") if s]
     if segments:
-        last_segment = segments[-1]
-        # Long slugs with hyphens are usually content
-        if len(last_segment) > 15 and "-" in last_segment:
-            return RelevancyResult.RELEVANT, "URL has long hyphenated slug (likely content)"
+        last_segment = segments[-1].replace(".html", "")
+        # Long slugs with word separators are usually content
+        if len(last_segment) > 15 and ("-" in last_segment or "_" in last_segment):
+            return RelevancyResult.RELEVANT, "URL has long slug (likely content)"
 
     # Uncertain - could be content or meta page
     return RelevancyResult.MAYBE, "URL pattern inconclusive"

@@ -111,7 +111,9 @@
 
         /* Key points */
         .key-points {
-            background: rgba(255,255,255,0.08);
+            background: rgba(0,0,0,0.6);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
             border-radius: 12px;
             padding: 14px;
             margin-bottom: 14px;
@@ -662,7 +664,7 @@
             const keyPointsHtml = post.keyPoints && post.keyPoints.length > 0 ? `
                 <div class="key-points">
                     <div class="key-points-title">Key Takeaways</div>
-                    ${post.keyPoints.slice(0, 4).map(point => `
+                    ${post.keyPoints.map(point => `
                         <div class="key-point">
                             <span class="key-point-bullet">•</span>
                             <span>${point}</span>

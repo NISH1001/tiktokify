@@ -1,6 +1,7 @@
 """CLI interface for tiktokify."""
 
 import asyncio
+import json
 from pathlib import Path
 
 import click
@@ -113,6 +114,18 @@ console = Console()
     default=None,
     help="Limit number of posts to process (for testing)",
 )
+@click.option(
+    "--save-cache",
+    type=click.Path(),
+    default=None,
+    help="Save intermediate data to JSON file (for reuse)",
+)
+@click.option(
+    "--load-cache",
+    type=click.Path(exists=True),
+    default=None,
+    help="Load from cached JSON file (skip crawling/enrichment)",
+)
 def main(
     base_url: str,
     output_html: str,
@@ -131,6 +144,8 @@ def main(
     verbose: bool,
     debug: bool,
     limit: int | None,
+    save_cache: str | None,
+    load_cache: str | None,
 ) -> None:
     """
     TikTokify - Generate a TikTok-style swipe interface for your Jekyll blog.
@@ -175,6 +190,8 @@ def main(
             temperature=temperature,
             verbose=verbose,
             limit=limit,
+            save_cache=Path(save_cache) if save_cache else None,
+            load_cache=Path(load_cache) if load_cache else None,
         )
     )
 
@@ -196,6 +213,8 @@ async def _main_async(
     temperature: float | None,
     verbose: bool,
     limit: int | None = None,
+    save_cache: Path | None = None,
+    load_cache: Path | None = None,
 ) -> None:
     """Async main function."""
     from tiktokify.crawler import SpiderCrawler
@@ -220,6 +239,23 @@ async def _main_async(
     }
 
     console.print(f"\n[bold blue]TikTokify[/bold blue] - Generating swipe UI for {base_url}\n")
+
+    # Load from cache if provided (skip all crawling/enrichment)
+    if load_cache:
+        from tiktokify.models import RecommendationGraph
+
+        console.print(f"  [cyan]📦[/cyan] Loading from cache: {load_cache}")
+        with open(load_cache) as f:
+            cache_data = json.load(f)
+        graph = RecommendationGraph.model_validate(cache_data)
+        console.print(f"  [green]✓[/green] Loaded {len(graph.posts)} posts from cache")
+
+        # Generate HTML directly
+        generator = HTMLGenerator()
+        generator.generate(graph, base_url, output_html)
+        console.print(f"  [green]✓[/green] Generated {output_html}")
+        console.print(f"\n[bold green]Done![/bold green] Open {output_html} in a browser to view.\n")
+        return
 
     with Progress(
         SpinnerColumn(),
@@ -361,6 +397,14 @@ async def _main_async(
                 console.print(f"  [green]✓[/green] Fetched external content from {', '.join(valid_sources)}")
             else:
                 console.print(f"  [yellow]⚠ Unknown sources: {sources}. Available: {list(PROVIDERS.keys())}[/yellow]")
+
+        # Save cache if requested (before HTML generation)
+        if save_cache:
+            task = progress.add_task("Saving cache...", total=None)
+            with open(save_cache, "w") as f:
+                json.dump(graph.model_dump(mode="json"), f, indent=2)
+            progress.remove_task(task)
+            console.print(f"  [green]✓[/green] Saved cache to {save_cache}")
 
         # Step 5: Generate HTML
         task = progress.add_task("Generating HTML...", total=None)

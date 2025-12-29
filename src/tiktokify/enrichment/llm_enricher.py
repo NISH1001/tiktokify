@@ -9,6 +9,7 @@ The actual Wikipedia extract fetching is done by providers/wikipedia.py
 
 import asyncio
 import json
+import re
 
 import litellm
 from pydantic import ValidationError
@@ -166,6 +167,10 @@ Guidelines:
             content = "\n".join(
                 line for line in lines if not line.startswith("```")
             )
+
+        # Fix unescaped backslashes from LaTeX (e.g., \overline -> \\overline)
+        # JSON requires \\ for literal backslash, but LLMs often return raw LaTeX
+        content = re.sub(r'\\([^"\\nrtbfu/])', r'\\\\\1', content)
 
         try:
             data = json.loads(content)
