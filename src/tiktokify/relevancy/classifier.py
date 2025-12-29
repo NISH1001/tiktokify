@@ -109,10 +109,12 @@ class RelevancyClassifier:
             if isinstance(result, Post):
                 if result.is_relevant:
                     relevant.append(result)
+                    if self.verbose:
+                        console.print(f"[green]✓ LLM kept:[/green] {posts[i].url}")
+                        console.print(f"  [dim]→ {result.relevancy_reason}[/dim]")
                 elif self.verbose:
-                    console.print(
-                        f"[dim]LLM filtered: {posts[i].url} ({result.relevancy_reason})[/dim]"
-                    )
+                    console.print(f"[red]✗ LLM filtered:[/red] {posts[i].url}")
+                    console.print(f"  [dim]→ {result.relevancy_reason}[/dim]")
             elif isinstance(result, Exception):
                 # On error, be permissive
                 posts[i].is_relevant = True
@@ -120,8 +122,9 @@ class RelevancyClassifier:
                 relevant.append(posts[i])
                 if self.verbose:
                     console.print(
-                        f"[yellow]LLM classification failed for {posts[i].url}: {result}[/yellow]"
+                        f"[yellow]⚠ LLM error for {posts[i].url}: {result}[/yellow]"
                     )
+                    console.print(f"  [dim]→ Including by default[/dim]")
 
         return relevant
 
