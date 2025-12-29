@@ -1,0 +1,1028 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>TikTokify - Swipe to Discover</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html, body {
+            height: 100%;
+            overflow: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #000;
+            color: #fff;
+        }
+
+        .swipe-container {
+            height: 100vh;
+            overflow-y: scroll;
+            scroll-snap-type: y mandatory;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        .card {
+            height: 100vh;
+            scroll-snap-align: start;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            background-size: cover;
+            background-position: center;
+        }
+
+        .card-overlay {
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(
+                to bottom,
+                rgba(0,0,0,0.3) 0%,
+                rgba(0,0,0,0.1) 30%,
+                rgba(0,0,0,0.6) 60%,
+                rgba(0,0,0,0.95) 100%
+            );
+        }
+
+        .card-content {
+            position: relative;
+            z-index: 1;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end;
+            padding: 20px;
+            padding-bottom: 100px;
+            overflow-y: auto;
+        }
+
+        .card-type {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: rgba(255,255,255,0.15);
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 12px;
+            width: fit-content;
+        }
+
+        .card-type.wiki {
+            background: rgba(77, 163, 255, 0.3);
+        }
+
+        .card-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+
+        .card-category {
+            background: rgba(255,255,255,0.2);
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .card-title {
+            font-size: 24px;
+            font-weight: 700;
+            margin-bottom: 10px;
+            line-height: 1.25;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .card-subtitle {
+            font-size: 14px;
+            opacity: 0.85;
+            margin-bottom: 12px;
+            line-height: 1.5;
+        }
+
+        /* Key points */
+        .key-points {
+            background: rgba(255,255,255,0.08);
+            border-radius: 12px;
+            padding: 14px;
+            margin-bottom: 14px;
+        }
+
+        .key-points-title {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            opacity: 0.6;
+            margin-bottom: 10px;
+        }
+
+        .key-point {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 8px;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+
+        .key-point:last-child {
+            margin-bottom: 0;
+        }
+
+        .key-point-bullet {
+            color: #4da3ff;
+            flex-shrink: 0;
+        }
+
+        .card-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-bottom: 12px;
+        }
+
+        .card-tag {
+            background: rgba(255,255,255,0.12);
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 11px;
+            opacity: 0.9;
+        }
+
+        .card-date {
+            font-size: 12px;
+            opacity: 0.6;
+        }
+
+        /* Wikipedia card specific */
+        .wiki-card {
+            background: linear-gradient(135deg, #1a1a2e 0%, #0f3460 100%);
+        }
+
+        .wiki-card .card-overlay {
+            background: linear-gradient(
+                to bottom,
+                rgba(15, 52, 96, 0.3) 0%,
+                rgba(15, 52, 96, 0.6) 50%,
+                rgba(10, 10, 30, 0.95) 100%
+            );
+        }
+
+        .wiki-excerpt {
+            font-size: 15px;
+            line-height: 1.7;
+            opacity: 0.95;
+            margin-bottom: 16px;
+            max-height: 40vh;
+            overflow-y: auto;
+        }
+
+        /* Wikipedia card - center content vertically */
+        .wiki-card .card-content {
+            justify-content: center;
+            padding-top: 80px;
+        }
+
+        /* HackerNews card */
+        .hn-card {
+            background: linear-gradient(135deg, #1a0a00 0%, #ff6600 100%);
+        }
+
+        .hn-card .card-overlay {
+            background: linear-gradient(
+                to bottom,
+                rgba(26, 10, 0, 0.4) 0%,
+                rgba(26, 10, 0, 0.6) 50%,
+                rgba(10, 5, 0, 0.95) 100%
+            );
+        }
+
+        .hn-card .card-content {
+            justify-content: center;
+            padding-top: 80px;
+        }
+
+        .card-type.hn {
+            background: rgba(255, 102, 0, 0.4);
+        }
+
+        .hn-meta {
+            display: flex;
+            gap: 16px;
+            margin-bottom: 16px;
+            font-size: 14px;
+            opacity: 0.9;
+        }
+
+        .hn-meta-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .hn-description {
+            font-size: 15px;
+            line-height: 1.7;
+            opacity: 0.9;
+            margin-bottom: 16px;
+            max-height: 35vh;
+            overflow-y: auto;
+        }
+
+        .hn-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(255, 102, 0, 0.3);
+            padding: 10px 16px;
+            border-radius: 8px;
+            font-size: 13px;
+            margin-top: 12px;
+            opacity: 0.9;
+        }
+
+        .wiki-relevance {
+            font-size: 13px;
+            line-height: 1.5;
+            opacity: 0.7;
+            margin-bottom: 12px;
+            padding-left: 12px;
+            border-left: 2px solid rgba(77, 163, 255, 0.5);
+        }
+
+        .wiki-source {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            opacity: 0.6;
+        }
+
+        /* Linked content card (tertiary crawled links) */
+        .linked-card {
+            background: linear-gradient(135deg, #1a1a1a 0%, #2d4a3e 100%);
+        }
+
+        .linked-card .card-overlay {
+            background: linear-gradient(
+                to bottom,
+                rgba(26, 26, 26, 0.3) 0%,
+                rgba(26, 26, 26, 0.6) 50%,
+                rgba(10, 20, 15, 0.95) 100%
+            );
+        }
+
+        .linked-card .card-content {
+            justify-content: center;
+            padding-top: 80px;
+        }
+
+        .card-type.linked {
+            background: rgba(46, 204, 113, 0.3);
+        }
+
+        .linked-description {
+            font-size: 15px;
+            line-height: 1.7;
+            opacity: 0.9;
+            margin-bottom: 16px;
+            max-height: 35vh;
+            overflow-y: auto;
+        }
+
+        .rec-item.linked-rec {
+            border-left: 3px solid rgba(46, 204, 113, 0.6);
+            padding-left: 12px;
+        }
+
+        .rec-thumb.linked-thumb {
+            background: linear-gradient(135deg, #1a1a1a 0%, #2d4a3e 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* Action buttons */
+        .card-actions {
+            position: fixed;
+            right: 12px;
+            bottom: 120px;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            z-index: 10;
+        }
+
+        .action-btn {
+            width: 46px;
+            height: 46px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.15);
+            backdrop-filter: blur(10px);
+            border: none;
+            color: #fff;
+            font-size: 18px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.2s, background 0.2s;
+        }
+
+        .action-btn:hover {
+            transform: scale(1.1);
+            background: rgba(255,255,255,0.25);
+        }
+
+        .action-btn:active {
+            transform: scale(0.95);
+        }
+
+        .read-btn {
+            background: rgba(255,71,87,0.8);
+        }
+
+        .read-btn:hover {
+            background: rgba(255,71,87,1);
+        }
+
+        /* Panels */
+        .panel {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: rgba(20,20,20,0.98);
+            backdrop-filter: blur(20px);
+            border-radius: 20px 20px 0 0;
+            padding: 20px;
+            transform: translateY(100%);
+            transition: transform 0.3s ease;
+            z-index: 20;
+            max-height: 60vh;
+            overflow-y: auto;
+        }
+
+        .panel.open {
+            transform: translateY(0);
+        }
+
+        .panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+
+        .panel h3 {
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        .panel-close {
+            background: none;
+            border: none;
+            color: #fff;
+            font-size: 24px;
+            cursor: pointer;
+            opacity: 0.6;
+        }
+
+        .panel-close:hover {
+            opacity: 1;
+        }
+
+        /* Recommendation items */
+        .rec-item {
+            display: flex;
+            gap: 14px;
+            padding: 12px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .rec-item:hover {
+            background: rgba(255,255,255,0.05);
+        }
+
+        .rec-thumb {
+            width: 64px;
+            height: 64px;
+            border-radius: 8px;
+            background-size: cover;
+            background-position: center;
+            flex-shrink: 0;
+            background-color: rgba(255,255,255,0.1);
+        }
+
+        .rec-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .rec-info h4 {
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .rec-info span {
+            font-size: 12px;
+            opacity: 0.5;
+        }
+
+        .rec-section-title {
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            opacity: 0.5;
+            margin: 16px 0 8px 0;
+        }
+
+        .rec-section-title:first-child {
+            margin-top: 0;
+        }
+
+        .rec-item.wiki-rec {
+            border-left: 3px solid rgba(77, 163, 255, 0.6);
+            padding-left: 12px;
+        }
+
+        .rec-thumb.wiki-thumb {
+            background: linear-gradient(135deg, #1a1a2e 0%, #0f3460 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .rec-thumb.wiki-thumb svg {
+            opacity: 0.6;
+        }
+
+        .rec-item.hn-rec {
+            border-left: 3px solid rgba(255, 102, 0, 0.6);
+            padding-left: 12px;
+        }
+
+        .rec-thumb.hn-thumb {
+            background: linear-gradient(135deg, #1a0a00 0%, #3d1a00 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* Swipe hint */
+        .swipe-hint {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 12px;
+            opacity: 0.4;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            animation: fadeOut 3s forwards;
+            animation-delay: 2s;
+        }
+
+        .swipe-hint-arrow {
+            animation: bounce 1.5s infinite;
+        }
+
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-6px); }
+        }
+
+        @keyframes fadeOut {
+            to { opacity: 0; pointer-events: none; }
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            opacity: 0.6;
+        }
+
+        .panel-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 15;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s;
+        }
+
+        .panel-overlay.visible {
+            opacity: 1;
+            pointer-events: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="swipe-container" id="container"></div>
+
+    <div class="card-actions" id="actions">
+        <button class="action-btn" id="recs-btn" title="Similar Posts">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="3"/>
+                <path d="M12 2v4m0 12v4M2 12h4m12 0h4"/>
+            </svg>
+        </button>
+        <button class="action-btn read-btn" id="read-btn" title="Read Full">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/>
+                <polyline points="15,3 21,3 21,9"/>
+                <line x1="10" y1="14" x2="21" y2="3"/>
+            </svg>
+        </button>
+    </div>
+
+    <div class="panel-overlay" id="panel-overlay"></div>
+
+    <div class="panel" id="recs-panel">
+        <div class="panel-header">
+            <h3>Related Content</h3>
+            <button class="panel-close" id="recs-close">&times;</button>
+        </div>
+        <div id="recs-content"></div>
+    </div>
+
+    <div class="swipe-hint" id="swipe-hint">
+        <span class="swipe-hint-arrow">&#8593;</span>
+        <span>Swipe up for more</span>
+    </div>
+
+    <script>
+        // Embedded data
+        const GRAPH = {{ graph_json|safe }};
+        const POST_SLUGS = {{ post_slugs_json|safe }};
+        const BASE_URL = "{{ base_url }}";
+
+        // State
+        let currentIndex = 0;
+        let feedItems = []; // Mixed array of {type: 'post'|'wiki', data: ...}
+
+        // Shuffle array (Fisher-Yates)
+        function shuffle(arr) {
+            const result = [...arr];
+            for (let i = result.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [result[i], result[j]] = [result[j], result[i]];
+            }
+            return result;
+        }
+
+        // Format date
+        function formatDate(isoDate) {
+            const date = new Date(isoDate);
+            return date.toLocaleDateString('en-US', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
+            });
+        }
+
+        // Build feed with interleaved external content (Wikipedia, HN, etc.)
+        function buildFeed() {
+            const shuffledSlugs = shuffle(POST_SLUGS);
+            feedItems = [];
+
+            // Collect all Wikipedia suggestions
+            const allWiki = [];
+            // Collect all external content (HN, etc.)
+            const allExternal = [];
+
+            for (const slug of shuffledSlugs) {
+                const post = GRAPH.posts[slug];
+                if (post.wikipedia) {
+                    for (const w of post.wikipedia) {
+                        allWiki.push({ ...w, sourcePost: post.title });
+                    }
+                }
+                if (post.externalContent) {
+                    for (const e of post.externalContent) {
+                        allExternal.push({ ...e, sourcePost: post.title });
+                    }
+                }
+            }
+
+            const shuffledWiki = shuffle(allWiki);
+            const shuffledExternal = shuffle(allExternal);
+
+            // Interleave content: wiki every 3 posts, external every 4 posts
+            let wikiIndex = 0;
+            let extIndex = 0;
+
+            for (let i = 0; i < shuffledSlugs.length; i++) {
+                feedItems.push({ type: 'post', slug: shuffledSlugs[i] });
+
+                // Insert Wikipedia after every 3 posts
+                if ((i + 1) % 3 === 0 && wikiIndex < shuffledWiki.length) {
+                    feedItems.push({ type: 'wiki', data: shuffledWiki[wikiIndex] });
+                    wikiIndex++;
+                }
+
+                // Insert external content (HN) after every 4 posts
+                if ((i + 1) % 4 === 0 && extIndex < shuffledExternal.length) {
+                    feedItems.push({ type: 'external', data: shuffledExternal[extIndex] });
+                    extIndex++;
+                }
+            }
+
+            // Add remaining content at the end
+            while (wikiIndex < shuffledWiki.length) {
+                feedItems.push({ type: 'wiki', data: shuffledWiki[wikiIndex] });
+                wikiIndex++;
+            }
+            while (extIndex < shuffledExternal.length) {
+                feedItems.push({ type: 'external', data: shuffledExternal[extIndex] });
+                extIndex++;
+            }
+        }
+
+        // Render a blog post card
+        function renderPostCard(slug, idx) {
+            const post = GRAPH.posts[slug];
+            const bgImg = post.headerImg ? `${BASE_URL}/${post.headerImg}` : '';
+            const bgStyle = bgImg ? `background-image: url('${bgImg}')` : 'background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)';
+
+            const keyPointsHtml = post.keyPoints && post.keyPoints.length > 0 ? `
+                <div class="key-points">
+                    <div class="key-points-title">Key Takeaways</div>
+                    ${post.keyPoints.slice(0, 4).map(point => `
+                        <div class="key-point">
+                            <span class="key-point-bullet">•</span>
+                            <span>${point}</span>
+                        </div>
+                    `).join('')}
+                </div>
+            ` : '';
+
+            return `
+                <div class="card" data-type="post" data-slug="${slug}" data-index="${idx}" style="${bgStyle}">
+                    <div class="card-overlay"></div>
+                    <div class="card-content">
+                        <div class="card-type">📝 Blog Post</div>
+                        <div class="card-meta">
+                            ${post.categories.map(c =>
+                                `<span class="card-category">${c}</span>`
+                            ).join('')}
+                            <span class="card-category">${post.readingTime} min</span>
+                        </div>
+                        <h1 class="card-title">${post.title}</h1>
+                        ${post.subtitle ? `<p class="card-subtitle">${post.subtitle}</p>` : ''}
+                        ${keyPointsHtml}
+                        <div class="card-tags">
+                            ${post.tags.slice(0, 4).map(t =>
+                                `<span class="card-tag">#${t}</span>`
+                            ).join('')}
+                        </div>
+                        <div class="card-date">${formatDate(post.date)}</div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Render a Wikipedia card
+        function renderWikiCard(wiki, idx) {
+            // Prefer extract from Wikipedia API, fall back to LLM-generated relevance
+            const excerpt = wiki.extract || wiki.relevance || '';
+            return `
+                <div class="card wiki-card" data-type="wiki" data-url="${wiki.url}" data-index="${idx}">
+                    <div class="card-overlay"></div>
+                    <div class="card-content">
+                        <div class="card-type wiki">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="12" r="10"/>
+                                <path d="M12 16v-4M12 8h.01"/>
+                            </svg>
+                            Wikipedia
+                        </div>
+                        <h1 class="card-title">${wiki.title}</h1>
+                        <p class="wiki-excerpt">${excerpt}</p>
+                        ${wiki.relevance && wiki.extract ? `<p class="wiki-relevance"><em>${wiki.relevance}</em></p>` : ''}
+                        <div class="wiki-source">
+                            Related to: ${wiki.sourcePost}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Render an external content card (HackerNews, linked, etc.)
+        function renderExternalCard(ext, idx) {
+            const isHN = ext.source === 'hackernews' || ext.source === 'hn-frontpage';
+            const isLinked = ext.source === 'linked';
+
+            let cardClass, typeClass, typeName, descClass;
+
+            if (isHN) {
+                cardClass = 'hn-card';
+                typeClass = 'hn';
+                typeName = ext.source === 'hn-frontpage' ? 'HN Front Page' : 'Hacker News';
+                descClass = 'hn-description';
+            } else if (isLinked) {
+                cardClass = 'linked-card';
+                typeClass = 'linked';
+                typeName = 'Referenced Link';
+                descClass = 'linked-description';
+            } else {
+                cardClass = 'external-card';
+                typeClass = '';
+                typeName = ext.source;
+                descClass = 'hn-description';
+            }
+
+            const points = ext.metadata?.points || 0;
+            const comments = ext.metadata?.num_comments || 0;
+            const storyUrl = ext.metadata?.story_url || '';
+
+            // Icon based on type
+            const icon = isHN
+                ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M0 24V0h24v24H0zM6.951 5.896l4.112 7.708v5.064h1.583v-4.972l4.148-7.799h-1.749l-2.457 4.875c-.372.745-.688 1.434-.688 1.434s-.297-.708-.651-1.434L8.831 5.896h-1.88z"/></svg>`
+                : isLinked
+                ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>`
+                : '';
+
+            return `
+                <div class="card ${cardClass}" data-type="external" data-url="${ext.url}" data-index="${idx}">
+                    <div class="card-overlay"></div>
+                    <div class="card-content">
+                        <div class="card-type ${typeClass}">
+                            ${icon}
+                            ${typeName}
+                        </div>
+                        <h1 class="card-title">${ext.title}</h1>
+                        ${isHN ? `
+                            <div class="hn-meta">
+                                <div class="hn-meta-item">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+                                    </svg>
+                                    ${points} points
+                                </div>
+                                <div class="hn-meta-item">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
+                                    </svg>
+                                    ${comments} comments
+                                </div>
+                            </div>
+                        ` : ''}
+                        ${ext.description ? `<p class="${descClass}">${ext.description}</p>` : ''}
+                        ${storyUrl ? `
+                            <div class="hn-link">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/>
+                                    <polyline points="15,3 21,3 21,9"/>
+                                    <line x1="10" y1="14" x2="21" y2="3"/>
+                                </svg>
+                                View original article
+                            </div>
+                        ` : ''}
+                        <div class="wiki-source">
+                            ${ext.relevance || `Related to: ${ext.sourcePost}`}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Render all slides
+        function renderSlides() {
+            buildFeed();
+            const container = document.getElementById('container');
+
+            container.innerHTML = feedItems.map((item, idx) => {
+                if (item.type === 'post') {
+                    return renderPostCard(item.slug, idx);
+                } else if (item.type === 'wiki') {
+                    return renderWikiCard(item.data, idx);
+                } else if (item.type === 'external') {
+                    return renderExternalCard(item.data, idx);
+                }
+            }).join('');
+        }
+
+        // Track current slide on scroll
+        function onScroll() {
+            const container = document.getElementById('container');
+            const slideHeight = window.innerHeight;
+            currentIndex = Math.round(container.scrollTop / slideHeight);
+
+            // Update action buttons visibility based on card type
+            const currentItem = feedItems[currentIndex];
+            const recsBtn = document.getElementById('recs-btn');
+            if (currentItem && (currentItem.type === 'wiki' || currentItem.type === 'external')) {
+                recsBtn.style.display = 'none';
+            } else {
+                recsBtn.style.display = 'flex';
+            }
+        }
+
+        // Open full content
+        function openFullContent() {
+            const item = feedItems[currentIndex];
+            if (item.type === 'post') {
+                const post = GRAPH.posts[item.slug];
+                window.open(post.url, '_blank');
+            } else if (item.type === 'wiki') {
+                window.open(item.data.url, '_blank');
+            } else if (item.type === 'external') {
+                window.open(item.data.url, '_blank');
+            }
+        }
+
+        // Close all panels
+        function closePanels() {
+            document.getElementById('recs-panel').classList.remove('open');
+            document.getElementById('panel-overlay').classList.remove('visible');
+        }
+
+        // Show recommendations panel
+        function showRecsPanel() {
+            const item = feedItems[currentIndex];
+            if (item.type !== 'post') return;
+
+            const panel = document.getElementById('recs-panel');
+            const content = document.getElementById('recs-content');
+            const post = GRAPH.posts[item.slug];
+            const recs = GRAPH.recommendations[item.slug] || [];
+            const wikiSuggestions = post.wikipedia || [];
+            const externalContent = post.externalContent || [];
+
+            let html = '';
+
+            // Similar posts section
+            if (recs.length > 0) {
+                html += '<div class="rec-section-title">Similar Posts</div>';
+                html += recs.map(([recSlug, score]) => {
+                    const recPost = GRAPH.posts[recSlug];
+                    const bgImg = recPost.headerImg ? `${BASE_URL}/${recPost.headerImg}` : '';
+                    const bgStyle = bgImg ? `background-image: url('${bgImg}')` : 'background: linear-gradient(135deg, #2d3436 0%, #636e72 100%)';
+
+                    return `
+                        <div class="rec-item" data-slug="${recSlug}">
+                            <div class="rec-thumb" style="${bgStyle}"></div>
+                            <div class="rec-info">
+                                <h4>${recPost.title}</h4>
+                                <span>${Math.round(score * 100)}% match</span>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            }
+
+            // Wikipedia section
+            if (wikiSuggestions.length > 0) {
+                html += '<div class="rec-section-title">Wikipedia Articles</div>';
+                html += wikiSuggestions.map(wiki => {
+                    const excerpt = wiki.extract || wiki.relevance || '';
+                    const truncatedExcerpt = excerpt.length > 80 ? excerpt.slice(0, 80) + '...' : excerpt;
+                    return `
+                        <div class="rec-item wiki-rec" data-url="${wiki.url}">
+                            <div class="rec-thumb wiki-thumb">
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                    <circle cx="12" cy="12" r="10"/>
+                                    <path d="M12 16v-4M12 8h.01"/>
+                                </svg>
+                            </div>
+                            <div class="rec-info">
+                                <h4>${wiki.title}</h4>
+                                <span>${truncatedExcerpt}</span>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            }
+
+            // External content section (HN, etc.)
+            const hnContent = externalContent.filter(e => e.source === 'hackernews' || e.source === 'hn-frontpage');
+            if (hnContent.length > 0) {
+                html += '<div class="rec-section-title">Hacker News</div>';
+                html += hnContent.map(hn => {
+                    const points = hn.metadata?.points || 0;
+                    const comments = hn.metadata?.num_comments || 0;
+                    return `
+                        <div class="rec-item hn-rec" data-url="${hn.url}">
+                            <div class="rec-thumb hn-thumb">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="#ff6600"><path d="M0 24V0h24v24H0zM6.951 5.896l4.112 7.708v5.064h1.583v-4.972l4.148-7.799h-1.749l-2.457 4.875c-.372.745-.688 1.434-.688 1.434s-.297-.708-.651-1.434L8.831 5.896h-1.88z"/></svg>
+                            </div>
+                            <div class="rec-info">
+                                <h4>${hn.title}</h4>
+                                <span>${points} pts · ${comments} comments</span>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            }
+
+            // Linked content section (tertiary crawled links)
+            const linkedContent = externalContent.filter(e => e.source === 'linked');
+            if (linkedContent.length > 0) {
+                html += '<div class="rec-section-title">Referenced Links</div>';
+                html += linkedContent.map(link => {
+                    const truncatedDesc = link.description && link.description.length > 80
+                        ? link.description.slice(0, 80) + '...'
+                        : (link.description || '');
+                    return `
+                        <div class="rec-item linked-rec" data-url="${link.url}">
+                            <div class="rec-thumb linked-thumb">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2ecc71" stroke-width="2">
+                                    <path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/>
+                                    <path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/>
+                                </svg>
+                            </div>
+                            <div class="rec-info">
+                                <h4>${link.title}</h4>
+                                <span>${truncatedDesc}</span>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            }
+
+            if (html) {
+                content.innerHTML = html;
+            } else {
+                content.innerHTML = '<div class="empty-state">No related content found.</div>';
+            }
+
+            document.getElementById('panel-overlay').classList.add('visible');
+            panel.classList.add('open');
+        }
+
+        // Jump to a specific post
+        function jumpToPost(slug) {
+            const idx = feedItems.findIndex(item => item.type === 'post' && item.slug === slug);
+            if (idx >= 0) {
+                const container = document.getElementById('container');
+                container.scrollTo({
+                    top: idx * window.innerHeight,
+                    behavior: 'smooth'
+                });
+                closePanels();
+            }
+        }
+
+        // Event listeners
+        document.getElementById('container').addEventListener('scroll', onScroll);
+        document.getElementById('read-btn').addEventListener('click', openFullContent);
+        document.getElementById('recs-btn').addEventListener('click', showRecsPanel);
+        document.getElementById('recs-close').addEventListener('click', closePanels);
+        document.getElementById('panel-overlay').addEventListener('click', closePanels);
+
+        document.getElementById('recs-content').addEventListener('click', (e) => {
+            const item = e.target.closest('.rec-item');
+            if (item) {
+                if (item.dataset.url) {
+                    // Wikipedia item - open in new tab
+                    window.open(item.dataset.url, '_blank');
+                    closePanels();
+                } else if (item.dataset.slug) {
+                    // Blog post - jump to it
+                    jumpToPost(item.dataset.slug);
+                }
+            }
+        });
+
+        // Keyboard navigation
+        document.addEventListener('keydown', (e) => {
+            const container = document.getElementById('container');
+            const slideHeight = window.innerHeight;
+
+            if (e.key === 'ArrowDown' || e.key === 'j') {
+                container.scrollBy({ top: slideHeight, behavior: 'smooth' });
+            } else if (e.key === 'ArrowUp' || e.key === 'k') {
+                container.scrollBy({ top: -slideHeight, behavior: 'smooth' });
+            } else if (e.key === 'Enter' || e.key === 'o') {
+                openFullContent();
+            } else if (e.key === 'Escape') {
+                closePanels();
+            }
+        });
+
+        // Hide swipe hint after first scroll
+        document.getElementById('container').addEventListener('scroll', () => {
+            document.getElementById('swipe-hint').style.display = 'none';
+        }, { once: true });
+
+        // Initialize
+        renderSlides();
+        onScroll(); // Update button visibility for initial state
+    </script>
+</body>
+</html>

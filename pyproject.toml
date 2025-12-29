@@ -1,0 +1,34 @@
+[project]
+name = "tiktokify"
+version = "0.1.0"
+description = "TikTok-style swipeable blog viewer with recommendations"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "crawl4ai>=0.4.0",
+    "scikit-learn>=1.3.0",
+    "numpy>=1.24.0",
+    "jinja2>=3.1.0",
+    "httpx>=0.25.0",
+    "litellm>=1.0.0",
+    "click>=8.1.0",
+    "pydantic>=2.0.0",
+    "rich>=13.0.0",
+    "loguru>=0.7.0",
+]
+
+[project.scripts]
+tiktokify = "tiktokify.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tiktokify"]
+
+[dependency-groups]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+]
