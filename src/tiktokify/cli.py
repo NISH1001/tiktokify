@@ -90,6 +90,13 @@ console = Console()
     help="Filter out meta pages (tags, categories, about, etc.) from results",
 )
 @click.option(
+    "--temperature",
+    "-t",
+    type=float,
+    default=0.5,
+    help="LLM temperature (0.0-1.0). Default: 0.5",
+)
+@click.option(
     "--verbose",
     "-v",
     is_flag=True,
@@ -109,6 +116,7 @@ def main(
     max_concurrent: int,
     max_depth: int,
     filter_meta_pages: bool,
+    temperature: float | None,
     verbose: bool,
 ) -> None:
     """
@@ -141,6 +149,7 @@ def main(
             max_concurrent=max_concurrent,
             max_depth=max_depth,
             filter_meta_pages=filter_meta_pages,
+            temperature=temperature,
             verbose=verbose,
         )
     )
@@ -160,6 +169,7 @@ async def _main_async(
     max_concurrent: int,
     max_depth: int,
     filter_meta_pages: bool,
+    temperature: float | None,
     verbose: bool,
 ) -> None:
     """Async main function."""
@@ -219,6 +229,7 @@ async def _main_async(
             classifier = RelevancyClassifier(
                 model=model,
                 max_concurrent=max_concurrent,
+                temperature=temperature,
                 verbose=verbose,
             )
             posts = await classifier.classify_posts(posts)
@@ -252,6 +263,7 @@ async def _main_async(
                 max_key_points=n_key_points,
                 max_wikipedia=n_wiki,
                 max_concurrent=max_concurrent,
+                temperature=temperature,
                 verbose=verbose,
             )
             await enricher.enrich_posts(list(graph.posts.values()))

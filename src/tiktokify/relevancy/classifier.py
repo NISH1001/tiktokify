@@ -13,6 +13,8 @@ console = Console()
 
 # Disable litellm's verbose logging
 litellm.suppress_debug_info = True
+# Drop unsupported params (e.g., temperature for GPT-5 models)
+litellm.drop_params = True
 
 
 class RelevancyClassifier:
@@ -22,6 +24,7 @@ class RelevancyClassifier:
         self,
         model: str | None = None,
         max_concurrent: int = 5,
+        temperature: float = 0.5,
         verbose: bool = False,
     ):
         """
@@ -30,10 +33,12 @@ class RelevancyClassifier:
         Args:
             model: LLM model for edge cases (None = patterns only)
             max_concurrent: Max concurrent LLM requests
+            temperature: LLM temperature for classification
             verbose: Enable verbose logging
         """
         self.model = model
         self.max_concurrent = max_concurrent
+        self.temperature = temperature
         self.verbose = verbose
         self.semaphore = asyncio.Semaphore(max_concurrent)
 
@@ -133,11 +138,12 @@ class RelevancyClassifier:
         prompt = self._build_classification_prompt(post)
 
         try:
+            # Note: reasoning models (like gpt-5) need extra tokens for chain-of-thought
             response = await litellm.acompletion(
                 model=self.model,
                 messages=[{"role": "user", "content": prompt}],
-                temperature=0.1,  # Low temp for consistent classification
-                max_tokens=200,
+                temperature=self.temperature,
+                max_tokens=1000,
             )
 
             content = response.choices[0].message.content

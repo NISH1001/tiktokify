@@ -20,6 +20,8 @@ console = Console()
 
 # Disable litellm's verbose logging
 litellm.suppress_debug_info = True
+# Drop unsupported params (e.g., temperature for GPT-5 models)
+litellm.drop_params = True
 
 
 class PostEnricher:
@@ -31,12 +33,14 @@ class PostEnricher:
         max_key_points: int = 5,
         max_wikipedia: int = 3,
         max_concurrent: int = 3,
+        temperature: float | None = None,
         verbose: bool = False,
     ):
         self.model = model
         self.max_key_points = max_key_points
         self.max_wikipedia = max_wikipedia
         self.max_concurrent = max_concurrent
+        self.temperature = temperature
         self.verbose = verbose
         self.semaphore = asyncio.Semaphore(max_concurrent)
 
@@ -46,17 +50,24 @@ class PostEnricher:
 
         try:
             # Calculate tokens needed: ~50 tokens per key point, ~80 per wiki suggestion
+            # Note: reasoning models (like gpt-5) need extra tokens for chain-of-thought
             estimated_tokens = (self.max_key_points * 50) + (self.max_wikipedia * 100) + 200
-            max_tokens = max(1000, min(estimated_tokens, 4000))
+            max_tokens = max(2000, min(estimated_tokens * 2, 8000))
 
-            response = await litellm.acompletion(
-                model=self.model,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.3,
-                max_tokens=max_tokens,
-            )
+            # Build completion kwargs
+            completion_kwargs = {
+                "model": self.model,
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": max_tokens,
+            }
+            if self.temperature is not None:
+                completion_kwargs["temperature"] = self.temperature
+
+            response = await litellm.acompletion(**completion_kwargs)
 
             content = response.choices[0].message.content
+            if self.verbose and not content:
+                console.print(f"[yellow]Empty LLM response for {post.slug}[/yellow]")
             key_points, wikipedia = self._parse_response(content)
 
             # Fetch Wikipedia extracts for each suggestion
@@ -125,8 +136,17 @@ Guidelines:
 - Wikipedia URLs must be valid (use underscores for spaces)
 - Return ONLY the JSON, no markdown formatting"""
 
-    def _parse_response(self, content: str) -> tuple[list[str], list[WikipediaSuggestion]]:
+    def _parse_response(self, content: str | None) -> tuple[list[str], list[WikipediaSuggestion]]:
         """Parse LLM response into key points and Wikipedia suggestions."""
+        key_points: list[str] = []
+        wikipedia: list[WikipediaSuggestion] = []
+
+        # Handle empty or None content
+        if not content:
+            if self.verbose:
+                console.print("[yellow]LLM returned empty response[/yellow]")
+            return key_points, wikipedia
+
         # Clean up response - remove markdown code blocks if present
         content = content.strip()
         if content.startswith("```"):
@@ -134,9 +154,6 @@ Guidelines:
             content = "\n".join(
                 line for line in lines if not line.startswith("```")
             )
-
-        key_points: list[str] = []
-        wikipedia: list[WikipediaSuggestion] = []
 
         try:
             data = json.loads(content)
@@ -160,8 +177,11 @@ Guidelines:
                         continue
 
         except json.JSONDecodeError as e:
+            # Only show in verbose mode - empty responses are handled gracefully
             if self.verbose:
                 console.print(f"[yellow]JSON parse error: {e}[/yellow]")
+                if content:
+                    console.print(f"[dim]Raw content: {content[:200]}...[/dim]")
 
         return key_points, wikipedia
 

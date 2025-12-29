@@ -1,8 +1,9 @@
 """Wikipedia content provider."""
 
+import asyncio
 from urllib.parse import unquote, urlparse
 
-import httpx
+from curl_cffi import requests as curl_requests
 
 from tiktokify.enrichment.base import ContentProvider, ExternalContent
 from tiktokify.models import Post
@@ -41,30 +42,28 @@ class WikipediaProvider(ContentProvider):
         return results
 
     async def _fetch_extract(self, title: str, max_chars: int = 1500) -> str:
-        """Fetch article extract from Wikipedia API."""
+        """Fetch article extract from Wikipedia API using curl_cffi.
+
+        Uses curl_cffi with browser impersonation to bypass Wikipedia's
+        bot detection which blocks standard Python HTTP clients.
+        """
         title = title.strip()
         url = "https://en.wikipedia.org/api/rest_v1/page/summary/" + title.replace(" ", "_")
 
         try:
-            async with httpx.AsyncClient() as client:
-                response = await client.get(
-                    url,
-                    headers={
-                        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                        "Accept": "application/json",
-                        "Accept-Language": "en-US,en;q=0.9",
-                        "Accept-Encoding": "gzip, deflate, br",
-                    },
-                    timeout=10.0,
-                    follow_redirects=True,
-                )
+            # Run in executor to avoid blocking the event loop
+            loop = asyncio.get_event_loop()
+            response = await loop.run_in_executor(
+                None,
+                lambda: curl_requests.get(url, impersonate="chrome", timeout=10),
+            )
 
-                if response.status_code == 200:
-                    data = response.json()
-                    extract = data.get("extract", "")
-                    if len(extract) > max_chars:
-                        extract = extract[:max_chars].rsplit(" ", 1)[0] + "..."
-                    return extract
+            if response.status_code == 200:
+                data = response.json()
+                extract = data.get("extract", "")
+                if len(extract) > max_chars:
+                    extract = extract[:max_chars].rsplit(" ", 1)[0] + "..."
+                return extract
         except Exception:
             pass
 
