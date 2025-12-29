@@ -102,6 +102,17 @@ console = Console()
     is_flag=True,
     help="Enable verbose output",
 )
+@click.option(
+    "--debug",
+    is_flag=True,
+    help="Debug mode: limit to 5 posts, skip external sources, enable verbose",
+)
+@click.option(
+    "--limit",
+    type=int,
+    default=None,
+    help="Limit number of posts to process (for testing)",
+)
 def main(
     base_url: str,
     output_html: str,
@@ -118,6 +129,8 @@ def main(
     filter_meta_pages: bool,
     temperature: float | None,
     verbose: bool,
+    debug: bool,
+    limit: int | None,
 ) -> None:
     """
     TikTokify - Generate a TikTok-style swipe interface for your Jekyll blog.
@@ -133,7 +146,17 @@ def main(
     With deeper spider crawling:
 
         uv run tiktokify -u https://example.com -o output.html --max-depth 2
+
+    Debug mode (fast testing with 5 posts):
+
+        uv run tiktokify -u https://example.com -o output.html --debug
     """
+    # Debug mode overrides
+    if debug:
+        verbose = True
+        limit = limit or 5
+        sources = ""  # Skip external sources in debug mode
+
     asyncio.run(
         _main_async(
             base_url=base_url,
@@ -151,6 +174,7 @@ def main(
             filter_meta_pages=filter_meta_pages,
             temperature=temperature,
             verbose=verbose,
+            limit=limit,
         )
     )
 
@@ -171,6 +195,7 @@ async def _main_async(
     filter_meta_pages: bool,
     temperature: float | None,
     verbose: bool,
+    limit: int | None = None,
 ) -> None:
     """Async main function."""
     from tiktokify.crawler import SpiderCrawler
@@ -219,6 +244,11 @@ async def _main_async(
             return
 
         console.print(f"  [green]✓[/green] Found {len(posts)} posts")
+
+        # Apply limit if specified (for debugging/testing)
+        if limit and len(posts) > limit:
+            posts = posts[:limit]
+            console.print(f"  [yellow]⚡[/yellow] Limited to {limit} posts (--debug/--limit)")
 
         # Step 1.5: Relevancy filtering (optional)
         if filter_meta_pages:

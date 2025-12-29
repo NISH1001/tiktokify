@@ -138,16 +138,32 @@ class RelevancyClassifier:
         prompt = self._build_classification_prompt(post)
 
         try:
-            # Note: reasoning models (like gpt-5) need extra tokens for chain-of-thought
-            response = await litellm.acompletion(
-                model=self.model,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=self.temperature,
-                max_tokens=1000,
-            )
+            # Retry with exponential backoff on empty response
+            max_tokens = 1000
+            max_retries = 3
+            content = None
 
-            content = response.choices[0].message.content
-            return self._parse_llm_response(content)
+            for attempt in range(max_retries):
+                response = await litellm.acompletion(
+                    model=self.model,
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=self.temperature,
+                    max_tokens=max_tokens,
+                )
+                content = response.choices[0].message.content
+
+                if content:
+                    break  # Got a response
+
+                # Empty response - backoff with 2x tokens
+                if self.verbose:
+                    console.print(
+                        f"[yellow]Empty response for {post.slug}, "
+                        f"retrying with {max_tokens * 2} tokens...[/yellow]"
+                    )
+                max_tokens = min(max_tokens * 2, 8000)
+
+            return self._parse_llm_response(content or "")
 
         except Exception as e:
             if self.verbose:

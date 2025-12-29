@@ -49,25 +49,37 @@ class PostEnricher:
         prompt = self._build_prompt(post)
 
         try:
-            # Calculate tokens needed: ~50 tokens per key point, ~80 per wiki suggestion
-            # Note: reasoning models (like gpt-5) need extra tokens for chain-of-thought
-            estimated_tokens = (self.max_key_points * 50) + (self.max_wikipedia * 100) + 200
-            max_tokens = max(2000, min(estimated_tokens * 2, 8000))
+            # Start with base tokens, backoff with 2x multiplier on empty response
+            base_tokens = (self.max_key_points * 50) + (self.max_wikipedia * 100) + 200
+            max_tokens = max(2000, base_tokens * 2)
+            max_retries = 3
+            content = None
 
-            # Build completion kwargs
-            completion_kwargs = {
-                "model": self.model,
-                "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": max_tokens,
-            }
-            if self.temperature is not None:
-                completion_kwargs["temperature"] = self.temperature
+            for attempt in range(max_retries):
+                completion_kwargs = {
+                    "model": self.model,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": max_tokens,
+                }
+                if self.temperature is not None:
+                    completion_kwargs["temperature"] = self.temperature
 
-            response = await litellm.acompletion(**completion_kwargs)
+                response = await litellm.acompletion(**completion_kwargs)
+                content = response.choices[0].message.content
 
-            content = response.choices[0].message.content
-            if self.verbose and not content:
-                console.print(f"[yellow]Empty LLM response for {post.slug}[/yellow]")
+                if content:
+                    break  # Got a response, exit retry loop
+
+                # Empty response - backoff with 2x tokens
+                if self.verbose:
+                    console.print(
+                        f"[yellow]Empty response for {post.slug}, "
+                        f"retrying with {max_tokens * 2} tokens...[/yellow]"
+                    )
+                max_tokens = min(max_tokens * 2, 16000)  # Cap at 16k
+
+            if not content and self.verbose:
+                console.print(f"[yellow]No response after {max_retries} retries for {post.slug}[/yellow]")
             key_points, wikipedia = self._parse_response(content)
 
             # Fetch Wikipedia extracts for each suggestion
