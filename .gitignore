@@ -12,6 +12,9 @@ tmp/
 out/
 temp/
 data/
+.envrc
+.env
+
 
 # Distribution / packaging
 .Python
