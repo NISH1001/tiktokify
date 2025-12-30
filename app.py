@@ -91,6 +91,7 @@ async def generate(
             skip_url_filter=skip_url_filter,
             skip_content_filter=skip_content_filter,
             stealth=stealth,
+            headless=True,  # Always headless in web UI
             temperature=temperature,
             verbose=False,
             limit=int(limit) if limit else None,

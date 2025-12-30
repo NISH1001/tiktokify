@@ -123,6 +123,11 @@ console = Console()
     help="Enable stealth mode for anti-detection (default: enabled)",
 )
 @click.option(
+    "--headless/--no-headless",
+    default=True,
+    help="Run browser in headless mode (default: enabled)",
+)
+@click.option(
     "--temperature",
     "-t",
     type=float,
@@ -178,6 +183,7 @@ def main(
     skip_url_filter: bool,
     skip_content_filter: bool,
     stealth: bool,
+    headless: bool,
     temperature: float | None,
     verbose: bool,
     debug: bool,
@@ -231,6 +237,7 @@ def main(
             skip_url_filter=skip_url_filter,
             skip_content_filter=skip_content_filter,
             stealth=stealth,
+            headless=headless,
             temperature=temperature,
             verbose=verbose,
             limit=limit,
@@ -260,6 +267,7 @@ async def _main_async(
     skip_url_filter: bool,
     skip_content_filter: bool,
     stealth: bool,
+    headless: bool,
     temperature: float | None,
     verbose: bool,
     limit: int | None = None,
@@ -326,6 +334,7 @@ async def _main_async(
             verbose=verbose,
             url_filter=url_filter,
             stealth=stealth,
+            headless=headless,
         )
         posts = await crawler.crawl()
         progress.remove_task(task)

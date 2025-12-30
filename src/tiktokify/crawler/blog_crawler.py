@@ -30,6 +30,7 @@ class SpiderCrawler:
         verbose: bool = False,
         url_filter: URLFilter | None = None,
         stealth: bool = True,
+        headless: bool = True,
     ):
         self.base_url = base_url.rstrip("/")
         self.max_concurrent = max_concurrent
@@ -37,6 +38,7 @@ class SpiderCrawler:
         self.verbose = verbose
         self.url_filter = url_filter
         self.stealth = stealth
+        self.headless = headless
         self.semaphore = asyncio.Semaphore(max_concurrent)
         self.base_domain = urlparse(self.base_url).netloc
 
@@ -45,7 +47,7 @@ class SpiderCrawler:
         if self.stealth:
             # Stealth mode: anti-detection settings for protected sites like Medium
             browser_config = BrowserConfig(
-                headless=True,
+                headless=self.headless,
                 verbose=self.verbose,
                 user_agent_mode="random",
                 extra_args=[
@@ -53,7 +55,7 @@ class SpiderCrawler:
                 ],
             )
         else:
-            browser_config = BrowserConfig(headless=True, verbose=self.verbose)
+            browser_config = BrowserConfig(headless=self.headless, verbose=self.verbose)
 
         async with AsyncWebCrawler(config=browser_config) as crawler:
             # Step 1: Discover post URLs
