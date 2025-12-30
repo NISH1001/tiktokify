@@ -36,6 +36,7 @@ class PostEnricher:
         max_concurrent: int = 3,
         temperature: float | None = None,
         verbose: bool = False,
+        api_key: str | None = None,
     ):
         self.model = model
         self.max_key_points = max_key_points
@@ -43,6 +44,7 @@ class PostEnricher:
         self.max_concurrent = max_concurrent
         self.temperature = temperature
         self.verbose = verbose
+        self.api_key = api_key
         self.semaphore = asyncio.Semaphore(max_concurrent)
 
     async def enrich_post(self, post: Post) -> None:
@@ -64,6 +66,8 @@ class PostEnricher:
                 }
                 if self.temperature is not None:
                     completion_kwargs["temperature"] = self.temperature
+                if self.api_key:
+                    completion_kwargs["api_key"] = self.api_key
 
                 response = await litellm.acompletion(**completion_kwargs)
                 content = response.choices[0].message.content

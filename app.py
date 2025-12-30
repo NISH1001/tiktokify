@@ -42,10 +42,6 @@ async def generate(
     if not base_url and not load_cache_file:
         raise gr.Error("Blog URL is required (or upload a cache file)")
 
-    # Set API key
-    if api_key:
-        os.environ["OPENAI_API_KEY"] = api_key
-
     # Create temp output files
     with tempfile.NamedTemporaryFile(suffix=".html", delete=False) as f:
         output_path = Path(f.name)
@@ -88,6 +84,7 @@ async def generate(
             limit=int(limit) if limit else None,
             save_cache=cache_path,
             load_cache=load_cache_path,
+            api_key=api_key,
         )
     except Exception as e:
         raise gr.Error(f"Generation failed: {e}")

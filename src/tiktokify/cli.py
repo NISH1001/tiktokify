@@ -215,6 +215,7 @@ async def _main_async(
     limit: int | None = None,
     save_cache: Path | None = None,
     load_cache: Path | None = None,
+    api_key: str | None = None,
 ) -> None:
     """Async main function."""
     from tiktokify.crawler import SpiderCrawler
@@ -331,6 +332,7 @@ async def _main_async(
                 max_concurrent=max_concurrent,
                 temperature=temperature,
                 verbose=verbose,
+                api_key=api_key,
             )
             await enricher.enrich_posts(list(graph.posts.values()))
             progress.remove_task(task)
