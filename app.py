@@ -60,11 +60,19 @@ async def generate(
     if load_cache_file is not None:
         load_cache_path = Path(load_cache_file)
 
+    # Debug: Log what we're actually passing
+    effective_model = model if model else None
+    print(f"[DEBUG] API key provided: {bool(api_key)}, Model: {effective_model}")
+
+    # Debug: Check for any API keys in environment
+    api_env_vars = [k for k in os.environ.keys() if any(x in k.upper() for x in ['API', 'KEY', 'TOKEN', 'SECRET', 'OPENAI', 'ANTHROPIC', 'HF'])]
+    print(f"[DEBUG] API-related env vars: {api_env_vars}")
+
     try:
         await _main_async(
             base_url=base_url or "https://placeholder.com",
             output_html=output_path,
-            model=model if model else None,
+            model=effective_model,
             n_key_points=n_key_points,
             n_wiki=n_wiki,
             sources=sources or [],
