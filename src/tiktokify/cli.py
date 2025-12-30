@@ -91,6 +91,43 @@ console = Console()
     help="Filter out meta pages (tags, categories, about, etc.) from results",
 )
 @click.option(
+    "--min-word-count",
+    type=int,
+    default=100,
+    help="Minimum word count for content filter (default: 100)",
+)
+@click.option(
+    "--min-similarity",
+    type=float,
+    default=0.0,
+    help="Minimum similarity score for recommendations (0.0-1.0, default: 0.0)",
+)
+@click.option(
+    "--use-llm-filter/--no-llm-filter",
+    default=False,
+    help="Use LLM for content quality assessment (requires --model)",
+)
+@click.option(
+    "--skip-url-filter",
+    is_flag=True,
+    help="Skip URL pattern filtering",
+)
+@click.option(
+    "--skip-content-filter",
+    is_flag=True,
+    help="Skip content quality filtering",
+)
+@click.option(
+    "--stealth/--no-stealth",
+    default=True,
+    help="Enable stealth mode for anti-detection (default: enabled)",
+)
+@click.option(
+    "--headless/--no-headless",
+    default=True,
+    help="Run browser in headless mode (default: enabled)",
+)
+@click.option(
     "--temperature",
     "-t",
     type=float,
@@ -140,6 +177,13 @@ def main(
     max_concurrent: int,
     max_depth: int,
     filter_meta_pages: bool,
+    min_word_count: int,
+    min_similarity: float,
+    use_llm_filter: bool,
+    skip_url_filter: bool,
+    skip_content_filter: bool,
+    stealth: bool,
+    headless: bool,
     temperature: float | None,
     verbose: bool,
     debug: bool,
@@ -187,6 +231,13 @@ def main(
             max_concurrent=max_concurrent,
             max_depth=max_depth,
             filter_meta_pages=filter_meta_pages,
+            min_word_count=min_word_count,
+            min_similarity=min_similarity,
+            use_llm_filter=use_llm_filter,
+            skip_url_filter=skip_url_filter,
+            skip_content_filter=skip_content_filter,
+            stealth=stealth,
+            headless=headless,
             temperature=temperature,
             verbose=verbose,
             limit=limit,
@@ -210,6 +261,13 @@ async def _main_async(
     max_concurrent: int,
     max_depth: int,
     filter_meta_pages: bool,
+    min_word_count: int,
+    min_similarity: float,
+    use_llm_filter: bool,
+    skip_url_filter: bool,
+    skip_content_filter: bool,
+    stealth: bool,
+    headless: bool,
     temperature: float | None,
     verbose: bool,
     limit: int | None = None,
@@ -225,6 +283,7 @@ async def _main_async(
         LinkedContentProvider,
         PostEnricher,
     )
+    from tiktokify.filters import ContentFilter, ContentFilterConfig, URLFilter
     from tiktokify.generator import HTMLGenerator
     from tiktokify.models import ExternalContentItem
     from tiktokify.recommender import RecommendationEngine
@@ -264,7 +323,8 @@ async def _main_async(
         console=console,
         transient=True,
     ) as progress:
-        # Step 1: Spider crawl
+        # Step 1: Spider crawl with URL filter
+        url_filter = None if skip_url_filter else URLFilter()
         depth_info = f" (depth={max_depth})" if max_depth > 1 else ""
         task = progress.add_task(f"Spider crawling{depth_info}...", total=None)
         crawler = SpiderCrawler(
@@ -272,6 +332,9 @@ async def _main_async(
             max_concurrent=max_concurrent,
             max_depth=max_depth,
             verbose=verbose,
+            url_filter=url_filter,
+            stealth=stealth,
+            headless=headless,
         )
         posts = await crawler.crawl()
         progress.remove_task(task)
@@ -280,14 +343,39 @@ async def _main_async(
             console.print("[red]Error: No posts found![/red]")
             return
 
-        console.print(f"  [green]✓[/green] Found {len(posts)} posts")
+        filter_info = "" if skip_url_filter else " (URL filtered)"
+        console.print(f"  [green]✓[/green] Found {len(posts)} posts{filter_info}")
 
         # Apply limit if specified (for debugging/testing)
         if limit and len(posts) > limit:
             posts = posts[:limit]
             console.print(f"  [yellow]⚡[/yellow] Limited to {limit} posts (--debug/--limit)")
 
-        # Step 1.5: Relevancy filtering (optional)
+        # Step 1.5: Content quality filtering (optional)
+        if not skip_content_filter:
+            original_count = len(posts)
+            task = progress.add_task("Filtering by content quality...", total=None)
+            content_filter = ContentFilter(
+                config=ContentFilterConfig(min_word_count=min_word_count),
+                model=model if use_llm_filter else None,
+                max_concurrent=max_concurrent,
+                verbose=verbose,
+            )
+            posts, rejected = await content_filter.filter(posts)
+            progress.remove_task(task)
+            if rejected:
+                console.print(
+                    f"  [green]✓[/green] Content filter: kept {len(posts)}, "
+                    f"removed {len(rejected)} low-quality pages"
+                )
+            else:
+                console.print(f"  [green]✓[/green] Content filter: all {len(posts)} pages passed")
+
+        if not posts:
+            console.print("[red]Error: No posts after content filtering![/red]")
+            return
+
+        # Step 1.6: Relevancy filtering (optional)
         if filter_meta_pages:
             from tiktokify.relevancy import RelevancyClassifier
 
@@ -317,10 +405,12 @@ async def _main_async(
             content_weight=content_weight,
             metadata_weight=metadata_weight,
             top_k=top_k,
+            min_similarity=min_similarity,
         )
         graph = engine.build_graph(posts)
         progress.remove_task(task)
-        console.print(f"  [green]✓[/green] Built recommendation graph")
+        threshold_info = f" (min_similarity={min_similarity})" if min_similarity > 0 else ""
+        console.print(f"  [green]✓[/green] Built recommendation graph{threshold_info}")
 
         # Step 3: LLM enrichment (optional)
         if model:

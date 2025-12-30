@@ -34,6 +34,12 @@ async def generate(
     top_k: int,
     max_concurrent: int,
     filter_meta_pages: bool,
+    min_word_count: int,
+    min_similarity: float,
+    use_llm_filter: bool,
+    skip_url_filter: bool,
+    skip_content_filter: bool,
+    stealth: bool,
     limit: int | None,
     save_cache: bool,
     load_cache_file,
@@ -79,6 +85,13 @@ async def generate(
             max_concurrent=max_concurrent,
             max_depth=max_depth,
             filter_meta_pages=filter_meta_pages,
+            min_word_count=min_word_count,
+            min_similarity=min_similarity,
+            use_llm_filter=use_llm_filter,
+            skip_url_filter=skip_url_filter,
+            skip_content_filter=skip_content_filter,
+            stealth=stealth,
+            headless=True,  # Always headless in web UI
             temperature=temperature,
             verbose=False,
             limit=int(limit) if limit else None,
@@ -184,11 +197,29 @@ with gr.Blocks(title="TikTokify", css=custom_css) as demo:
             content_weight = gr.Slider(0, 1, value=0.6, step=0.1, label="Content Weight (TF-IDF)")
             metadata_weight = gr.Slider(0, 1, value=0.4, step=0.1, label="Metadata Weight (Tags)")
             top_k = gr.Slider(1, 10, value=5, step=1, label="Recommendations per Post")
+        min_similarity = gr.Slider(
+            0, 1, value=0.0, step=0.05,
+            label="Min Similarity Threshold",
+            info="Filter out low-similarity recommendations (0 = no filter)",
+        )
+
+    with gr.Accordion("Content Filtering", open=False):
+        gr.Markdown("*Filter out junk pages before building recommendations*")
+        with gr.Row():
+            skip_url_filter = gr.Checkbox(value=False, label="Skip URL Filter")
+            skip_content_filter = gr.Checkbox(value=False, label="Skip Content Filter")
+            use_llm_filter = gr.Checkbox(value=False, label="Use LLM for Content Filter")
+        min_word_count = gr.Slider(
+            50, 500, value=100, step=10,
+            label="Min Word Count",
+            info="Pages with fewer words are filtered out",
+        )
 
     with gr.Accordion("Advanced", open=False):
         with gr.Row():
             max_concurrent = gr.Slider(1, 10, value=5, step=1, label="Max Concurrent Requests")
             filter_meta_pages = gr.Checkbox(value=True, label="Filter Meta Pages")
+            stealth = gr.Checkbox(value=True, label="Stealth Mode (anti-detection)")
             limit = gr.Number(label="Post Limit (optional)", precision=0)
         with gr.Row():
             save_cache = gr.Checkbox(value=False, label="Save Cache (download JSON to reuse later)")
@@ -207,8 +238,10 @@ with gr.Blocks(title="TikTokify", css=custom_css) as demo:
             n_key_points, n_wiki, temperature,
             sources, n_external,
             content_weight, metadata_weight, top_k,
-            max_concurrent, filter_meta_pages, limit,
-            save_cache, load_cache_file,
+            max_concurrent, filter_meta_pages,
+            min_word_count, min_similarity, use_llm_filter,
+            skip_url_filter, skip_content_filter, stealth,
+            limit, save_cache, load_cache_file,
         ],
         outputs=[output_file, html_preview, cache_file],
     )
