@@ -1,14 +1,20 @@
 """Async crawler for Jekyll blogs using crawl4ai."""
 
+from __future__ import annotations
+
 import asyncio
 import re
 from datetime import datetime
+from typing import TYPE_CHECKING
 from urllib.parse import urljoin, urlparse
 
 from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig
 from rich.console import Console
 
 from tiktokify.models import Post, PostMetadata
+
+if TYPE_CHECKING:
+    from tiktokify.filters import URLFilter
 
 console = Console()
 
@@ -22,11 +28,13 @@ class SpiderCrawler:
         max_concurrent: int = 5,
         max_depth: int = 1,
         verbose: bool = False,
+        url_filter: URLFilter | None = None,
     ):
         self.base_url = base_url.rstrip("/")
         self.max_concurrent = max_concurrent
         self.max_depth = max_depth
         self.verbose = verbose
+        self.url_filter = url_filter
         self.semaphore = asyncio.Semaphore(max_concurrent)
         self.base_domain = urlparse(self.base_url).netloc
 
@@ -137,7 +145,21 @@ class SpiderCrawler:
         if self.verbose:
             console.print(f"[dim]Total discovered: {len(discovered)} content URLs[/dim]")
 
-        return list(discovered)
+        # Apply URL filter if provided
+        discovered_list = list(discovered)
+        if self.url_filter:
+            passed, rejected = await self.url_filter.filter(discovered_list)
+            if self.verbose and rejected:
+                console.print(
+                    f"[dim]URL filter: kept {len(passed)}, rejected {len(rejected)}[/dim]"
+                )
+                for url, reason in rejected[:5]:  # Show first 5
+                    console.print(f"[dim]  ✗ {url}: {reason}[/dim]")
+                if len(rejected) > 5:
+                    console.print(f"[dim]  ... and {len(rejected) - 5} more[/dim]")
+            return passed
+
+        return discovered_list
 
     def _is_content_url(self, href: str, base_domain: str) -> bool:
         """Check if URL is internal content (not static asset or utility page).

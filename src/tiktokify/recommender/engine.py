@@ -14,10 +14,12 @@ class RecommendationEngine:
         content_weight: float = 0.6,
         metadata_weight: float = 0.4,
         top_k: int = 5,
+        min_similarity: float = 0.0,
     ):
         self.content_weight = content_weight
         self.metadata_weight = metadata_weight
         self.top_k = top_k
+        self.min_similarity = min_similarity
 
         self.tfidf = TFIDFSimilarity()
         self.metadata = MetadataSimilarity()
@@ -48,12 +50,18 @@ class RecommendationEngine:
                 )
                 combined.append((slug, combined_score))
 
-            # Sort and take top_k
+            # Sort and filter by min_similarity, then take top_k
             combined.sort(key=lambda x: x[1], reverse=True)
-            adjacency[post.slug] = combined[: self.top_k]
+            above_threshold = [
+                (slug, score)
+                for slug, score in combined
+                if score >= self.min_similarity
+            ]
+            top_recommendations = above_threshold[: self.top_k]
+            adjacency[post.slug] = top_recommendations
 
             # Update post object with recommendations
-            post.similar_posts = [s for s, _ in combined[: self.top_k]]
-            post.similarity_scores = dict(combined[: self.top_k])
+            post.similar_posts = [s for s, _ in top_recommendations]
+            post.similarity_scores = dict(top_recommendations)
 
         return RecommendationGraph(posts=posts_dict, adjacency=adjacency)
