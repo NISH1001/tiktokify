@@ -1,3 +1,14 @@
+---
+title: TikTokify
+emoji: 📱
+colorFrom: blue
+colorTo: purple
+sdk: gradio
+sdk_version: "4.44.0"
+app_file: app.py
+pinned: false
+---
+
 # TikTokify
 
 A CLI tool that generates a TikTok-style swipeable blog viewer with recommendations and optional Wikipedia suggestions.
