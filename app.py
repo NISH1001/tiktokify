@@ -3,12 +3,18 @@
 import asyncio
 import base64
 import os
+import sys
 import tempfile
 from pathlib import Path
 
 import gradio as gr
 
-from tiktokify.cli import _main_async
+# Import tiktokify - add src to path if package not installed (e.g., HF Spaces)
+try:
+    from tiktokify.cli import _main_async
+except ImportError:
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
+    from tiktokify.cli import _main_async
 
 MODELS = ["", "gpt-4o-mini", "gpt-4o"]
 
