@@ -29,18 +29,31 @@ class SpiderCrawler:
         max_depth: int = 1,
         verbose: bool = False,
         url_filter: URLFilter | None = None,
+        stealth: bool = True,
     ):
         self.base_url = base_url.rstrip("/")
         self.max_concurrent = max_concurrent
         self.max_depth = max_depth
         self.verbose = verbose
         self.url_filter = url_filter
+        self.stealth = stealth
         self.semaphore = asyncio.Semaphore(max_concurrent)
         self.base_domain = urlparse(self.base_url).netloc
 
     async def crawl(self) -> list[Post]:
         """Main entry point - crawls entire blog and returns posts."""
-        browser_config = BrowserConfig(headless=True, verbose=self.verbose)
+        if self.stealth:
+            # Stealth mode: anti-detection settings for protected sites like Medium
+            browser_config = BrowserConfig(
+                headless=True,
+                verbose=self.verbose,
+                user_agent_mode="random",
+                extra_args=[
+                    "--disable-blink-features=AutomationControlled",
+                ],
+            )
+        else:
+            browser_config = BrowserConfig(headless=True, verbose=self.verbose)
 
         async with AsyncWebCrawler(config=browser_config) as crawler:
             # Step 1: Discover post URLs

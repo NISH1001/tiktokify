@@ -39,6 +39,7 @@ async def generate(
     use_llm_filter: bool,
     skip_url_filter: bool,
     skip_content_filter: bool,
+    stealth: bool,
     limit: int | None,
     save_cache: bool,
     load_cache_file,
@@ -89,6 +90,7 @@ async def generate(
             use_llm_filter=use_llm_filter,
             skip_url_filter=skip_url_filter,
             skip_content_filter=skip_content_filter,
+            stealth=stealth,
             temperature=temperature,
             verbose=False,
             limit=int(limit) if limit else None,
@@ -216,6 +218,7 @@ with gr.Blocks(title="TikTokify", css=custom_css) as demo:
         with gr.Row():
             max_concurrent = gr.Slider(1, 10, value=5, step=1, label="Max Concurrent Requests")
             filter_meta_pages = gr.Checkbox(value=True, label="Filter Meta Pages")
+            stealth = gr.Checkbox(value=True, label="Stealth Mode (anti-detection)")
             limit = gr.Number(label="Post Limit (optional)", precision=0)
         with gr.Row():
             save_cache = gr.Checkbox(value=False, label="Save Cache (download JSON to reuse later)")
@@ -236,7 +239,7 @@ with gr.Blocks(title="TikTokify", css=custom_css) as demo:
             content_weight, metadata_weight, top_k,
             max_concurrent, filter_meta_pages,
             min_word_count, min_similarity, use_llm_filter,
-            skip_url_filter, skip_content_filter,
+            skip_url_filter, skip_content_filter, stealth,
             limit, save_cache, load_cache_file,
         ],
         outputs=[output_file, html_preview, cache_file],

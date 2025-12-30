@@ -118,6 +118,11 @@ console = Console()
     help="Skip content quality filtering",
 )
 @click.option(
+    "--stealth/--no-stealth",
+    default=True,
+    help="Enable stealth mode for anti-detection (default: enabled)",
+)
+@click.option(
     "--temperature",
     "-t",
     type=float,
@@ -172,6 +177,7 @@ def main(
     use_llm_filter: bool,
     skip_url_filter: bool,
     skip_content_filter: bool,
+    stealth: bool,
     temperature: float | None,
     verbose: bool,
     debug: bool,
@@ -224,6 +230,7 @@ def main(
             use_llm_filter=use_llm_filter,
             skip_url_filter=skip_url_filter,
             skip_content_filter=skip_content_filter,
+            stealth=stealth,
             temperature=temperature,
             verbose=verbose,
             limit=limit,
@@ -252,6 +259,7 @@ async def _main_async(
     use_llm_filter: bool,
     skip_url_filter: bool,
     skip_content_filter: bool,
+    stealth: bool,
     temperature: float | None,
     verbose: bool,
     limit: int | None = None,
@@ -317,6 +325,7 @@ async def _main_async(
             max_depth=max_depth,
             verbose=verbose,
             url_filter=url_filter,
+            stealth=stealth,
         )
         posts = await crawler.crawl()
         progress.remove_task(task)
