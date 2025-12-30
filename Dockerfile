@@ -1,9 +1,8 @@
 FROM python:3.12-slim
 
-# Install system dependencies for Playwright/Chromium
+# Install system dependencies for Playwright/Chromium + curl for uv
 RUN apt-get update && apt-get install -y \
-    wget \
-    gnupg \
+    curl \
     libnss3 \
     libnspr4 \
     libatk1.0-0 \
@@ -23,30 +22,35 @@ RUN apt-get update && apt-get install -y \
     libgtk-3-0 \
     && rm -rf /var/lib/apt/lists/*
 
+# Install uv
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.local/bin:$PATH"
+
 # Set up working directory
 WORKDIR /app
 
-# Copy requirements and install Python dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Copy project files for uv sync
+COPY pyproject.toml uv.lock ./
+COPY src/ ./src/
+
+# Install dependencies with uv sync (uses lockfile)
+RUN uv sync --frozen --no-dev --extra web
 
 # Install Playwright browsers
-RUN playwright install chromium
+RUN uv run playwright install chromium
 
-# Copy application code
-COPY . .
+# Copy remaining application code
+COPY app.py .
 
 # Create non-root user for HF Spaces
 RUN useradd -m -u 1000 user
+RUN chown -R user:user /app
 USER user
 
 # Set environment variables
 ENV HOME=/home/user \
-    PATH=/home/user/.local/bin:$PATH \
     PYTHONUNBUFFERED=1
-
-WORKDIR /app
 
 EXPOSE 7860
 
-CMD ["python", "app.py"]
+CMD ["uv", "run", "python", "app.py"]
