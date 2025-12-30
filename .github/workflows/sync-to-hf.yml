@@ -17,4 +17,4 @@ jobs:
       - name: Push to Hugging Face Spaces
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
-        run: git push https://nishparadox:$HF_TOKEN@huggingface.co/spaces/nishparadox/tiktokify main
+        run: git push --force https://nishparadox:$HF_TOKEN@huggingface.co/spaces/nishparadox/tiktokify main
