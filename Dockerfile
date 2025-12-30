@@ -36,7 +36,10 @@ COPY src/ ./src/
 # Install dependencies with uv sync (uses lockfile)
 RUN uv sync --frozen --no-dev --extra web
 
-# Install Playwright browsers
+# Set Playwright browser path to shared location accessible by non-root user
+ENV PLAYWRIGHT_BROWSERS_PATH=/app/.playwright
+
+# Install Playwright browsers to shared path
 RUN uv run playwright install chromium
 
 # Copy remaining application code
@@ -49,7 +52,8 @@ USER user
 
 # Set environment variables
 ENV HOME=/home/user \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    PLAYWRIGHT_BROWSERS_PATH=/app/.playwright
 
 EXPOSE 7860
 
