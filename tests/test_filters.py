@@ -324,13 +324,14 @@ class TestRecommendationThreshold:
             ),
         ]
 
-    def test_no_threshold_returns_all(self):
+    @pytest.mark.asyncio
+    async def test_no_threshold_returns_all(self):
         """With threshold=0, should return all top-k results."""
         from tiktokify.recommender import RecommendationEngine
 
         posts = self._make_posts()
         engine = RecommendationEngine(min_similarity=0.0, top_k=5)
-        graph = engine.build_graph(posts)
+        graph = await engine.build_graph(posts)
 
         # Each post should have recommendations (even if low similarity)
         for post in posts:
@@ -338,14 +339,15 @@ class TestRecommendationThreshold:
             # Should have 2 recommendations (the other 2 posts)
             assert len(recs) == 2
 
-    def test_high_threshold_filters(self):
+    @pytest.mark.asyncio
+    async def test_high_threshold_filters(self):
         """With high threshold, should filter low-similarity results."""
         from tiktokify.recommender import RecommendationEngine
 
         posts = self._make_posts()
         # Very high threshold - might filter some recommendations
         engine = RecommendationEngine(min_similarity=0.5, top_k=5)
-        graph = engine.build_graph(posts)
+        graph = await engine.build_graph(posts)
 
         # ML and DL posts might still match due to shared tags
         # But cooking should have fewer matches with ML content

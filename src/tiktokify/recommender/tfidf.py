@@ -2,12 +2,13 @@
 
 import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
 
 from tiktokify.models import Post
 
+from .base import BaseSimilarity, compute_cosine_similarity, get_top_k_from_matrix
 
-class TFIDFSimilarity:
+
+class TFIDFSimilarity(BaseSimilarity):
     """Content-based similarity using TF-IDF."""
 
     def __init__(
@@ -22,30 +23,23 @@ class TFIDFSimilarity:
             min_df=1,
             max_df=0.9,
         )
-        self.tfidf_matrix: np.ndarray | None = None
+        self._similarity_matrix: np.ndarray | None = None
         self.slugs: list[str] = []
 
-    def fit(self, posts: list[Post]) -> None:
-        """Fit TF-IDF on post content."""
+    @property
+    def name(self) -> str:
+        return "tfidf"
+
+    async def fit(self, posts: list[Post]) -> None:
+        """Fit TF-IDF on post content (sync internally, async interface)."""
         self.slugs = [p.slug for p in posts]
         texts = [p.content_text for p in posts]
-        self.tfidf_matrix = self.vectorizer.fit_transform(texts)
-
-    def get_similarity_matrix(self) -> np.ndarray:
-        """Return full cosine similarity matrix."""
-        if self.tfidf_matrix is None:
-            raise ValueError("Must call fit() first")
-        return cosine_similarity(self.tfidf_matrix)
+        tfidf_matrix = self.vectorizer.fit_transform(texts).toarray()
+        self._similarity_matrix = compute_cosine_similarity(tfidf_matrix)
 
     def get_similar(self, slug: str, top_k: int = 5) -> list[tuple[str, float]]:
         """Get top-k similar posts for a given slug."""
-        if slug not in self.slugs:
+        if slug not in self.slugs or self._similarity_matrix is None:
             return []
-
         idx = self.slugs.index(slug)
-        sim_matrix = self.get_similarity_matrix()
-        scores = sim_matrix[idx]
-
-        # Get top-k (excluding self)
-        top_indices = np.argsort(scores)[::-1][1 : top_k + 1]
-        return [(self.slugs[i], float(scores[i])) for i in top_indices]
+        return get_top_k_from_matrix(self._similarity_matrix, self.slugs, idx, top_k)
