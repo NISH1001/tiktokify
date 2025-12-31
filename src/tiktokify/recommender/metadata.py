@@ -2,8 +2,10 @@
 
 from tiktokify.models import Post
 
+from .base import BaseSimilarity
 
-class MetadataSimilarity:
+
+class MetadataSimilarity(BaseSimilarity):
     """Tag and category based Jaccard similarity."""
 
     def __init__(
@@ -15,8 +17,12 @@ class MetadataSimilarity:
         self.category_weight = category_weight
         self.posts: dict[str, Post] = {}
 
-    def fit(self, posts: list[Post]) -> None:
-        """Store posts for similarity computation."""
+    @property
+    def name(self) -> str:
+        return "metadata"
+
+    async def fit(self, posts: list[Post]) -> None:
+        """Store posts for similarity computation (sync internally, async interface)."""
         self.posts = {p.slug: p for p in posts}
 
     def compute_similarity(self, slug1: str, slug2: str) -> float:

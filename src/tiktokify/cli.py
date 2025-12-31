@@ -68,6 +68,18 @@ console = Console()
     help="Weight for tag/category similarity (0-1)",
 )
 @click.option(
+    "--embedding-model",
+    type=str,
+    default=None,
+    help="Embedding model for semantic similarity (e.g., sentence-transformers/all-MiniLM-L6-v2 or text-embedding-3-small)",
+)
+@click.option(
+    "--embedding-weight",
+    type=float,
+    default=0.3,
+    help="Weight for semantic similarity (0-1, only used if --embedding-model is set)",
+)
+@click.option(
     "--top-k",
     type=int,
     default=5,
@@ -173,6 +185,8 @@ def main(
     n_external: int,
     content_weight: float,
     metadata_weight: float,
+    embedding_model: str | None,
+    embedding_weight: float,
     top_k: int,
     max_concurrent: int,
     max_depth: int,
@@ -227,6 +241,8 @@ def main(
             n_external=n_external,
             content_weight=content_weight,
             metadata_weight=metadata_weight,
+            embedding_model=embedding_model,
+            embedding_weight=embedding_weight,
             top_k=top_k,
             max_concurrent=max_concurrent,
             max_depth=max_depth,
@@ -257,6 +273,8 @@ async def _main_async(
     n_external: int,
     content_weight: float,
     metadata_weight: float,
+    embedding_model: str | None,
+    embedding_weight: float,
     top_k: int,
     max_concurrent: int,
     max_depth: int,
@@ -400,17 +418,23 @@ async def _main_async(
             return
 
         # Step 2: Build recommendations
-        task = progress.add_task("Building recommendation graph...", total=None)
+        embed_info = f" + {embedding_model}" if embedding_model else ""
+        task = progress.add_task(f"Building recommendation graph{embed_info}...", total=None)
         engine = RecommendationEngine(
             content_weight=content_weight,
             metadata_weight=metadata_weight,
+            embedding_weight=embedding_weight,
+            embedding_model=embedding_model,
             top_k=top_k,
             min_similarity=min_similarity,
+            max_concurrent=max_concurrent,
+            verbose=verbose,
         )
-        graph = engine.build_graph(posts)
+        graph = await engine.build_graph(posts)
         progress.remove_task(task)
         threshold_info = f" (min_similarity={min_similarity})" if min_similarity > 0 else ""
-        console.print(f"  [green]✓[/green] Built recommendation graph{threshold_info}")
+        embed_suffix = f" with semantic embeddings" if embedding_model else ""
+        console.print(f"  [green]✓[/green] Built recommendation graph{threshold_info}{embed_suffix}")
 
         # Step 3: LLM enrichment (optional)
         if model:

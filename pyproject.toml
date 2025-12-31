@@ -16,6 +16,7 @@ dependencies = [
     "rich>=13.0.0",
     "loguru>=0.7.0",
     "curl-cffi>=0.14.0",
+    "sentence-transformers>=2.2.0",
 ]
 
 [project.scripts]
