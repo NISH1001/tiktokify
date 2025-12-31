@@ -31,6 +31,7 @@ class SpiderCrawler:
         url_filter: URLFilter | None = None,
         stealth: bool = True,
         headless: bool = True,
+        follow_external: bool = False,
     ):
         self.base_url = base_url.rstrip("/")
         self.max_concurrent = max_concurrent
@@ -39,6 +40,7 @@ class SpiderCrawler:
         self.url_filter = url_filter
         self.stealth = stealth
         self.headless = headless
+        self.follow_external = follow_external
         self.semaphore = asyncio.Semaphore(max_concurrent)
         self.base_domain = urlparse(self.base_url).netloc
 
@@ -177,10 +179,10 @@ class SpiderCrawler:
         return discovered_list
 
     def _is_content_url(self, href: str, base_domain: str) -> bool:
-        """Check if URL is internal content (not static asset or utility page).
+        """Check if URL is content (not static asset or utility page).
 
         This is a simple filter - accepts anything that's:
-        1. On the same domain
+        1. On the same domain (or any domain if follow_external=True)
         2. Not a static asset (css, js, images, fonts)
         3. Not a utility link (mailto, javascript, anchor)
         """
@@ -202,11 +204,12 @@ class SpiderCrawler:
         if any(href.lower().endswith(ext) for ext in static_extensions):
             return False
 
-        # Check if it's an external link
-        if href.startswith(("http://", "https://")):
-            parsed = urlparse(href)
-            if parsed.netloc != base_domain:
-                return False
+        # Check if it's an external link (only filter if not following external)
+        if not self.follow_external:
+            if href.startswith(("http://", "https://")):
+                parsed = urlparse(href)
+                if parsed.netloc != base_domain:
+                    return False
 
         # Skip the base URL itself (index page)
         path = urlparse(href).path if href.startswith("http") else href
