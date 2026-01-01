@@ -33,6 +33,12 @@ class TFIDFSimilarity(BaseSimilarity):
     async def fit(self, posts: list[Post]) -> None:
         """Fit TF-IDF on post content (sync internally, async interface)."""
         self.slugs = [p.slug for p in posts]
+
+        # Handle edge case: need at least 2 posts for similarity
+        if len(posts) < 2:
+            self._similarity_matrix = np.zeros((len(posts), len(posts)))
+            return
+
         texts = [p.content_text for p in posts]
         tfidf_matrix = self.vectorizer.fit_transform(texts).toarray()
         self._similarity_matrix = compute_cosine_similarity(tfidf_matrix)

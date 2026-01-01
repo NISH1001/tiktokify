@@ -95,7 +95,7 @@ console = Console()
     "--max-depth",
     type=int,
     default=1,
-    help="Spider crawl depth (1=seed only, 2=seed+linked pages, etc.)",
+    help="Spider crawl depth (0=seed only, 1=seed+linked pages, 2=two levels, etc.)",
 )
 @click.option(
     "--filter-meta-pages/--no-filter-meta-pages",

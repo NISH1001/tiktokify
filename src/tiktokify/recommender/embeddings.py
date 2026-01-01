@@ -61,6 +61,12 @@ class EmbeddingSimilarity(BaseSimilarity):
     async def fit(self, posts: list[Post]) -> None:
         """Generate embeddings and compute similarity matrix."""
         self.slugs = [p.slug for p in posts]
+
+        # Handle edge case: need at least 2 posts for similarity
+        if len(posts) < 2:
+            self._similarity_matrix = np.zeros((len(posts), len(posts)))
+            return
+
         texts = [self._prepare_text(p) for p in posts]
 
         if self.use_local:

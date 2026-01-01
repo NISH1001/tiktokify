@@ -48,7 +48,7 @@ class SpiderCrawler:
         self.base_domain = urlparse(self.base_url).netloc
 
     async def crawl(self) -> list[Post]:
-        """Main entry point - crawls entire blog and returns posts."""
+        """Main entry point - crawls and returns posts in single pass."""
         if self.stealth:
             # Stealth mode: anti-detection settings for protected sites like Medium
             browser_config = BrowserConfig(
@@ -63,17 +63,13 @@ class SpiderCrawler:
             browser_config = BrowserConfig(headless=self.headless, verbose=self.verbose)
 
         async with AsyncWebCrawler(config=browser_config) as crawler:
-            # Step 1: Discover post URLs
             if self.verbose:
-                console.print("[dim]Discovering post URLs...[/dim]")
+                console.print("[dim]Discovering and crawling posts...[/dim]")
 
-            post_urls = await self._discover_post_urls(crawler)
+            posts = await self._crawl_all(crawler)
 
             if self.verbose:
-                console.print(f"[green]Found {len(post_urls)} posts[/green]")
-
-            # Step 2: Crawl individual posts concurrently
-            posts = await self._crawl_posts(crawler, post_urls)
+                console.print(f"[green]Found {len(posts)} posts[/green]")
 
         return posts
 
@@ -82,46 +78,28 @@ class SpiderCrawler:
         parsed = urlparse(url)
         return parsed.netloc == self.base_domain or not parsed.netloc
 
-    async def _discover_post_urls(self, crawler: AsyncWebCrawler) -> list[str]:
-        """Discover all content URLs using spider-style recursive crawling.
+    async def _crawl_all(self, crawler: AsyncWebCrawler) -> list[Post]:
+        """Single-pass crawl: discover links + build Posts together.
 
-        Starts from base URL and follows links with depth control:
-        - Internal links: up to max_depth levels
-        - External links: up to external_depth levels (when follow_external=True)
-
-        Depth tracking:
-        - internal_depth: how deep within base domain
-        - external_depth: how deep from first external link (resets per external domain)
+        Depth semantics:
+        - depth=0: Only crawl seed URL, don't follow any links
+        - depth=1: Seed + 1 level of links
+        - depth=2: Seed + 2 levels of links
         """
-        discovered: set[str] = set()
+        posts: dict[str, Post] = {}  # url -> Post (avoid duplicates)
         visited: set[str] = set()
 
-        async def crawl_page(url: str, internal_depth: int, ext_depth: int) -> set[tuple[str, int, int]]:
-            """Crawl a single page and return new URLs with their depth info.
-
-            Args:
-                url: The URL to crawl
-                internal_depth: Current depth for internal links
-                ext_depth: Current depth for external links (0 if on base domain)
-
-            Returns:
-                Set of (url, internal_depth, external_depth) tuples
-            """
-            is_internal = self._is_internal_url(url)
+        async def crawl_page(url: str, current_depth: int, is_external: bool) -> list[tuple[str, int, bool]]:
+            """Crawl a page and return discovered URLs with their depth info."""
+            if url in visited:
+                return []
 
             # Check depth limits
-            if is_internal:
-                if internal_depth > self.max_depth:
-                    return set()
-            else:
-                if ext_depth > self.external_depth:
-                    return set()
-
-            if url in visited:
-                return set()
+            max_allowed = self.external_depth if is_external else self.max_depth
+            if current_depth > max_allowed:
+                return []
 
             visited.add(url)
-            new_urls: set[tuple[str, int, int]] = set()
 
             try:
                 async with self.semaphore:
@@ -131,107 +109,138 @@ class SpiderCrawler:
                     )
 
                 if not result.success:
-                    return set()
+                    return []
 
-                # Extract links from crawl4ai
-                if result.links:
-                    for link in result.links.get("internal", []):
-                        href = link.get("href", "") if isinstance(link, dict) else str(link)
-                        if self._is_content_url(href, self.base_domain):
-                            full_url = href if href.startswith("http") else urljoin(url, href)
-                            if full_url not in discovered:
-                                new_urls.add(self._url_with_depth(full_url, internal_depth, ext_depth))
+                # Build Post immediately (single-pass: no second fetch needed)
+                post = self._build_post(result, url)
+                if post:
+                    posts[url] = post
 
-                # Also parse HTML directly as fallback
-                if result.html:
-                    hrefs = re.findall(r'href=["\']([^"\']+)["\']', result.html)
-                    for href in hrefs:
-                        if self._is_content_url(href, self.base_domain):
-                            full_url = href if href.startswith("http") else urljoin(url, href)
-                            if full_url not in discovered:
-                                new_urls.add(self._url_with_depth(full_url, internal_depth, ext_depth))
+                # Only extract links if we haven't reached max depth
+                if current_depth < max_allowed:
+                    new_urls = self._extract_links(result, url, current_depth, visited)
+                    if self.verbose and new_urls:
+                        ext_info = " (external)" if is_external else ""
+                        console.print(f"[dim]Depth {current_depth}{ext_info}: Found {len(new_urls)} links from {url}[/dim]")
+                    return new_urls
 
-                discovered.update(u for u, _, _ in new_urls)
-
-                if self.verbose and new_urls:
-                    domain_info = "" if is_internal else f" (external depth {ext_depth})"
-                    console.print(f"[dim]Depth {internal_depth}{domain_info}: Found {len(new_urls)} URLs from {url}[/dim]")
+                return []
 
             except Exception as e:
                 if self.verbose:
                     console.print(f"[yellow]Warning: Failed to crawl {url}: {e}[/yellow]")
-
-            return new_urls
+                return []
 
         # Start with seed URL
         if self.verbose:
             ext_info = f", external_depth={self.external_depth}" if self.follow_external else ""
             console.print(f"[dim]Spider crawling with max_depth={self.max_depth}{ext_info}[/dim]")
 
-        # Depth 1: crawl seed URL (internal_depth=1, ext_depth=0)
-        current_urls = await crawl_page(self.base_url, 1, 0)
+        # Crawl seed URL at depth 0
+        current_urls = await crawl_page(self.base_url, 0, False)
 
-        # Deeper levels: recursively crawl discovered URLs
+        # BFS: crawl discovered URLs level by level
         max_possible_depth = max(self.max_depth, self.external_depth) if self.follow_external else self.max_depth
-        for _ in range(2, max_possible_depth + 1):
+        for depth in range(1, max_possible_depth + 1):
             if not current_urls:
                 break
 
             if self.verbose:
-                console.print(f"[dim]Crawling next level: {len(current_urls)} URLs to explore[/dim]")
+                console.print(f"[dim]Depth {depth}: {len(current_urls)} URLs to crawl[/dim]")
 
             # Crawl all current URLs in parallel
-            tasks = [crawl_page(url, i_depth, e_depth) for url, i_depth, e_depth in current_urls]
+            tasks = [crawl_page(url, depth, is_ext) for url, depth, is_ext in current_urls]
             results = await asyncio.gather(*tasks, return_exceptions=True)
 
             # Collect new URLs for next depth
-            next_urls: set[tuple[str, int, int]] = set()
+            next_urls: list[tuple[str, int, bool]] = []
             for result in results:
-                if isinstance(result, set):
-                    next_urls.update(result)
+                if isinstance(result, list):
+                    next_urls.extend(result)
 
             current_urls = next_urls
 
         if self.verbose:
-            console.print(f"[dim]Total discovered: {len(discovered)} content URLs[/dim]")
+            console.print(f"[dim]Total crawled: {len(posts)} posts[/dim]")
 
         # Apply URL filter if provided
-        discovered_list = list(discovered)
+        post_list = list(posts.values())
         if self.url_filter:
-            passed, rejected = await self.url_filter.filter(discovered_list)
+            urls = [p.url for p in post_list]
+            passed_urls, rejected = await self.url_filter.filter(urls)
+            passed_set = set(passed_urls)
             if self.verbose and rejected:
                 console.print(
-                    f"[dim]URL filter: kept {len(passed)}, rejected {len(rejected)}[/dim]"
+                    f"[dim]URL filter: kept {len(passed_urls)}, rejected {len(rejected)}[/dim]"
                 )
                 for url, reason in rejected[:5]:  # Show first 5
                     console.print(f"[dim]  ✗ {url}: {reason}[/dim]")
                 if len(rejected) > 5:
                     console.print(f"[dim]  ... and {len(rejected) - 5} more[/dim]")
-            return passed
+            post_list = [p for p in post_list if p.url in passed_set]
 
-        return discovered_list
+        return post_list
 
-    def _url_with_depth(self, url: str, current_internal_depth: int, current_ext_depth: int) -> tuple[str, int, int]:
-        """Calculate depth values for a discovered URL.
+    def _build_post(self, result, url: str) -> Post | None:
+        """Build Post from CrawlResult."""
+        if not result.success:
+            return None
 
-        Args:
-            url: The discovered URL
-            current_internal_depth: Internal depth of the page we found this URL on
-            current_ext_depth: External depth of the page we found this URL on
+        # Extract metadata from HTML
+        metadata = self._extract_metadata(result.html, url)
 
-        Returns:
-            Tuple of (url, new_internal_depth, new_external_depth)
+        # Use markdown for clean text (TF-IDF)
+        content_text = result.markdown or ""
+
+        # Calculate reading time (~200 words/min)
+        word_count = len(content_text.split())
+        reading_time = max(1, word_count // 200)
+
+        # Extract slug from URL
+        slug = self._extract_slug(url)
+
+        return Post(
+            url=url,
+            slug=slug,
+            metadata=metadata,
+            content_text=content_text,
+            content_html=result.html or "",
+            reading_time_minutes=reading_time,
+        )
+
+    def _extract_links(
+        self, result, url: str, current_depth: int, visited: set[str]
+    ) -> list[tuple[str, int, bool]]:
+        """Extract links from crawl result for recursive crawling.
+
+        Returns list of (url, next_depth, is_external) tuples.
         """
-        is_internal = self._is_internal_url(url)
+        new_urls: list[tuple[str, int, bool]] = []
+        seen: set[str] = set()
 
-        if is_internal:
-            # Internal link: increment internal depth, reset external depth
-            return (url, current_internal_depth + 1, 0)
-        else:
-            # External link: keep internal depth, increment external depth
-            # If we're coming from internal (ext_depth=0), this is first external hop
-            new_ext_depth = current_ext_depth + 1 if current_ext_depth > 0 else 1
-            return (url, current_internal_depth, new_ext_depth)
+        def add_url(href: str) -> None:
+            if not self._is_content_url(href, self.base_domain):
+                return
+            full_url = href if href.startswith("http") else urljoin(url, href)
+            if full_url in visited or full_url in seen:
+                return
+            seen.add(full_url)
+            is_external = not self._is_internal_url(full_url)
+            new_urls.append((full_url, current_depth + 1, is_external))
+
+        # From crawl4ai links
+        if result.links:
+            for link in result.links.get("internal", []):
+                href = link.get("href", "") if isinstance(link, dict) else str(link)
+                add_url(href)
+
+        # From HTML fallback
+        if result.html:
+            hrefs = re.findall(r'href=["\']([^"\']+)["\']', result.html)
+            for href in hrefs:
+                add_url(href)
+
+        return new_urls
 
     def _is_content_url(self, href: str, base_domain: str) -> bool:
         """Check if URL is content (not static asset or utility page).
@@ -272,66 +281,6 @@ class SpiderCrawler:
             return False
 
         return True
-
-    async def _crawl_posts(
-        self, crawler: AsyncWebCrawler, urls: list[str]
-    ) -> list[Post]:
-        """Crawl all post URLs concurrently with semaphore."""
-
-        async def crawl_one(url: str) -> Post | None:
-            async with self.semaphore:
-                return await self._crawl_single_post(crawler, url)
-
-        tasks = [crawl_one(url) for url in urls]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-
-        posts = []
-        for i, result in enumerate(results):
-            if isinstance(result, Post):
-                posts.append(result)
-            elif isinstance(result, Exception) and self.verbose:
-                console.print(f"[yellow]Failed to crawl {urls[i]}: {result}[/yellow]")
-
-        return posts
-
-    async def _crawl_single_post(
-        self, crawler: AsyncWebCrawler, url: str
-    ) -> Post | None:
-        """Crawl and parse a single post."""
-        try:
-            result = await crawler.arun(
-                url=url,
-                config=CrawlerRunConfig(wait_until="domcontentloaded"),
-            )
-
-            if not result.success:
-                return None
-
-            # Extract metadata from HTML
-            metadata = self._extract_metadata(result.html, url)
-
-            # Use markdown for clean text (TF-IDF)
-            content_text = result.markdown or ""
-
-            # Calculate reading time (~200 words/min)
-            word_count = len(content_text.split())
-            reading_time = max(1, word_count // 200)
-
-            # Extract slug from URL
-            slug = self._extract_slug(url)
-
-            return Post(
-                url=url,
-                slug=slug,
-                metadata=metadata,
-                content_text=content_text,
-                content_html=result.html or "",
-                reading_time_minutes=reading_time,
-            )
-        except Exception as e:
-            if self.verbose:
-                console.print(f"[yellow]Error parsing {url}: {e}[/yellow]")
-            return None
 
     def _extract_metadata(self, html: str, url: str) -> PostMetadata:
         """Extract metadata from rendered HTML using regex (works with various blog themes)."""
