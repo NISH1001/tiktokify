@@ -31,6 +31,8 @@ async def generate(
     n_external: int,
     content_weight: float,
     metadata_weight: float,
+    embedding_model: str,
+    embedding_weight: float,
     top_k: int,
     max_concurrent: int,
     filter_meta_pages: bool,
@@ -40,6 +42,8 @@ async def generate(
     skip_url_filter: bool,
     skip_content_filter: bool,
     stealth: bool,
+    follow_external: bool,
+    external_depth: int,
     limit: int | None,
     save_cache: bool,
     load_cache_file,
@@ -81,6 +85,8 @@ async def generate(
             n_external=n_external,
             content_weight=content_weight,
             metadata_weight=metadata_weight,
+            embedding_model=embedding_model if embedding_model else None,
+            embedding_weight=embedding_weight,
             top_k=top_k,
             max_concurrent=max_concurrent,
             max_depth=max_depth,
@@ -92,6 +98,8 @@ async def generate(
             skip_content_filter=skip_content_filter,
             stealth=stealth,
             headless=True,  # Always headless in web UI
+            follow_external=follow_external,
+            external_depth=int(external_depth),
             temperature=temperature,
             verbose=False,
             limit=int(limit) if limit else None,
@@ -173,9 +181,9 @@ with gr.Blocks(title="TikTokify", css=custom_css) as demo:
                 info="Leave empty to skip LLM enrichment",
             )
             max_depth = gr.Slider(
-                1, 5, value=1, step=1,
+                0, 5, value=1, step=1,
                 label="Crawl Depth",
-                info="1=seed URL only, 2+=follow links",
+                info="0=seed only, 1=seed+links, 2=two levels",
             )
 
     with gr.Accordion("LLM Enrichment", open=False):
@@ -197,6 +205,13 @@ with gr.Blocks(title="TikTokify", css=custom_css) as demo:
             content_weight = gr.Slider(0, 1, value=0.6, step=0.1, label="Content Weight (TF-IDF)")
             metadata_weight = gr.Slider(0, 1, value=0.4, step=0.1, label="Metadata Weight (Tags)")
             top_k = gr.Slider(1, 10, value=5, step=1, label="Recommendations per Post")
+        with gr.Row():
+            embedding_model = gr.Textbox(
+                label="Embedding Model (optional)",
+                placeholder="sentence-transformers/all-MiniLM-L6-v2",
+                info="Leave empty to disable semantic embeddings",
+            )
+            embedding_weight = gr.Slider(0, 1, value=0.3, step=0.1, label="Embedding Weight")
         min_similarity = gr.Slider(
             0, 1, value=0.0, step=0.05,
             label="Min Similarity Threshold",
@@ -222,6 +237,9 @@ with gr.Blocks(title="TikTokify", css=custom_css) as demo:
             stealth = gr.Checkbox(value=True, label="Stealth Mode (anti-detection)")
             limit = gr.Number(label="Post Limit (optional)", precision=0)
         with gr.Row():
+            follow_external = gr.Checkbox(value=False, label="Follow External Links")
+            external_depth = gr.Slider(0, 3, value=1, step=1, label="External Link Depth")
+        with gr.Row():
             save_cache = gr.Checkbox(value=False, label="Save Cache (download JSON to reuse later)")
             load_cache_file = gr.File(
                 label="Load from Cache (skip crawling)",
@@ -237,10 +255,12 @@ with gr.Blocks(title="TikTokify", css=custom_css) as demo:
             base_url, api_key, model, max_depth,
             n_key_points, n_wiki, temperature,
             sources, n_external,
-            content_weight, metadata_weight, top_k,
+            content_weight, metadata_weight,
+            embedding_model, embedding_weight, top_k,
             max_concurrent, filter_meta_pages,
             min_word_count, min_similarity, use_llm_filter,
             skip_url_filter, skip_content_filter, stealth,
+            follow_external, external_depth,
             limit, save_cache, load_cache_file,
         ],
         outputs=[output_file, html_preview, cache_file],
