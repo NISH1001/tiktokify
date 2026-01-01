@@ -140,6 +140,17 @@ console = Console()
     help="Run browser in headless mode (default: enabled)",
 )
 @click.option(
+    "--follow-external/--no-follow-external",
+    default=False,
+    help="Follow external links during crawling (default: internal only)",
+)
+@click.option(
+    "--external-depth",
+    type=int,
+    default=1,
+    help="Max depth for external links (default: 1, only directly linked external pages)",
+)
+@click.option(
     "--temperature",
     "-t",
     type=float,
@@ -198,6 +209,8 @@ def main(
     skip_content_filter: bool,
     stealth: bool,
     headless: bool,
+    follow_external: bool,
+    external_depth: int,
     temperature: float | None,
     verbose: bool,
     debug: bool,
@@ -254,6 +267,8 @@ def main(
             skip_content_filter=skip_content_filter,
             stealth=stealth,
             headless=headless,
+            follow_external=follow_external,
+            external_depth=external_depth,
             temperature=temperature,
             verbose=verbose,
             limit=limit,
@@ -286,6 +301,8 @@ async def _main_async(
     skip_content_filter: bool,
     stealth: bool,
     headless: bool,
+    follow_external: bool,
+    external_depth: int,
     temperature: float | None,
     verbose: bool,
     limit: int | None = None,
@@ -353,6 +370,8 @@ async def _main_async(
             url_filter=url_filter,
             stealth=stealth,
             headless=headless,
+            follow_external=follow_external,
+            external_depth=external_depth,
         )
         posts = await crawler.crawl()
         progress.remove_task(task)

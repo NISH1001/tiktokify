@@ -31,6 +31,8 @@ class SpiderCrawler:
         url_filter: URLFilter | None = None,
         stealth: bool = True,
         headless: bool = True,
+        follow_external: bool = False,
+        external_depth: int | None = None,
     ):
         self.base_url = base_url.rstrip("/")
         self.max_concurrent = max_concurrent
@@ -39,6 +41,9 @@ class SpiderCrawler:
         self.url_filter = url_filter
         self.stealth = stealth
         self.headless = headless
+        self.follow_external = follow_external
+        # External depth: how deep to crawl external sites (None = same as max_depth)
+        self.external_depth = external_depth if external_depth is not None else max_depth
         self.semaphore = asyncio.Semaphore(max_concurrent)
         self.base_domain = urlparse(self.base_url).netloc
 
@@ -72,24 +77,51 @@ class SpiderCrawler:
 
         return posts
 
+    def _is_internal_url(self, url: str) -> bool:
+        """Check if URL belongs to the base domain."""
+        parsed = urlparse(url)
+        return parsed.netloc == self.base_domain or not parsed.netloc
+
     async def _discover_post_urls(self, crawler: AsyncWebCrawler) -> list[str]:
         """Discover all content URLs using spider-style recursive crawling.
 
-        Starts from base URL and follows internal links up to max_depth levels.
-        - Depth 1: Only links from seed URL (default)
-        - Depth 2: Links from seed + links from those pages
-        - etc.
+        Starts from base URL and follows links with depth control:
+        - Internal links: up to max_depth levels
+        - External links: up to external_depth levels (when follow_external=True)
+
+        Depth tracking:
+        - internal_depth: how deep within base domain
+        - external_depth: how deep from first external link (resets per external domain)
         """
         discovered: set[str] = set()
         visited: set[str] = set()
 
-        async def crawl_page(url: str, depth: int) -> set[str]:
-            """Crawl a single page and return new URLs found."""
-            if depth > self.max_depth or url in visited:
+        async def crawl_page(url: str, internal_depth: int, ext_depth: int) -> set[tuple[str, int, int]]:
+            """Crawl a single page and return new URLs with their depth info.
+
+            Args:
+                url: The URL to crawl
+                internal_depth: Current depth for internal links
+                ext_depth: Current depth for external links (0 if on base domain)
+
+            Returns:
+                Set of (url, internal_depth, external_depth) tuples
+            """
+            is_internal = self._is_internal_url(url)
+
+            # Check depth limits
+            if is_internal:
+                if internal_depth > self.max_depth:
+                    return set()
+            else:
+                if ext_depth > self.external_depth:
+                    return set()
+
+            if url in visited:
                 return set()
 
             visited.add(url)
-            new_urls: set[str] = set()
+            new_urls: set[tuple[str, int, int]] = set()
 
             try:
                 async with self.semaphore:
@@ -108,7 +140,7 @@ class SpiderCrawler:
                         if self._is_content_url(href, self.base_domain):
                             full_url = href if href.startswith("http") else urljoin(url, href)
                             if full_url not in discovered:
-                                new_urls.add(full_url)
+                                new_urls.add(self._url_with_depth(full_url, internal_depth, ext_depth))
 
                 # Also parse HTML directly as fallback
                 if result.html:
@@ -117,12 +149,13 @@ class SpiderCrawler:
                         if self._is_content_url(href, self.base_domain):
                             full_url = href if href.startswith("http") else urljoin(url, href)
                             if full_url not in discovered:
-                                new_urls.add(full_url)
+                                new_urls.add(self._url_with_depth(full_url, internal_depth, ext_depth))
 
-                discovered.update(new_urls)
+                discovered.update(u for u, _, _ in new_urls)
 
                 if self.verbose and new_urls:
-                    console.print(f"[dim]Depth {depth}: Found {len(new_urls)} URLs from {url}[/dim]")
+                    domain_info = "" if is_internal else f" (external depth {ext_depth})"
+                    console.print(f"[dim]Depth {internal_depth}{domain_info}: Found {len(new_urls)} URLs from {url}[/dim]")
 
             except Exception as e:
                 if self.verbose:
@@ -132,25 +165,27 @@ class SpiderCrawler:
 
         # Start with seed URL
         if self.verbose:
-            console.print(f"[dim]Spider crawling with max_depth={self.max_depth}[/dim]")
+            ext_info = f", external_depth={self.external_depth}" if self.follow_external else ""
+            console.print(f"[dim]Spider crawling with max_depth={self.max_depth}{ext_info}[/dim]")
 
-        # Depth 1: crawl seed URL
-        current_urls = await crawl_page(self.base_url, 1)
+        # Depth 1: crawl seed URL (internal_depth=1, ext_depth=0)
+        current_urls = await crawl_page(self.base_url, 1, 0)
 
         # Deeper levels: recursively crawl discovered URLs
-        for depth in range(2, self.max_depth + 1):
+        max_possible_depth = max(self.max_depth, self.external_depth) if self.follow_external else self.max_depth
+        for _ in range(2, max_possible_depth + 1):
             if not current_urls:
                 break
 
             if self.verbose:
-                console.print(f"[dim]Crawling depth {depth}: {len(current_urls)} URLs to explore[/dim]")
+                console.print(f"[dim]Crawling next level: {len(current_urls)} URLs to explore[/dim]")
 
             # Crawl all current URLs in parallel
-            tasks = [crawl_page(url, depth) for url in current_urls]
+            tasks = [crawl_page(url, i_depth, e_depth) for url, i_depth, e_depth in current_urls]
             results = await asyncio.gather(*tasks, return_exceptions=True)
 
             # Collect new URLs for next depth
-            next_urls: set[str] = set()
+            next_urls: set[tuple[str, int, int]] = set()
             for result in results:
                 if isinstance(result, set):
                     next_urls.update(result)
@@ -176,11 +211,33 @@ class SpiderCrawler:
 
         return discovered_list
 
+    def _url_with_depth(self, url: str, current_internal_depth: int, current_ext_depth: int) -> tuple[str, int, int]:
+        """Calculate depth values for a discovered URL.
+
+        Args:
+            url: The discovered URL
+            current_internal_depth: Internal depth of the page we found this URL on
+            current_ext_depth: External depth of the page we found this URL on
+
+        Returns:
+            Tuple of (url, new_internal_depth, new_external_depth)
+        """
+        is_internal = self._is_internal_url(url)
+
+        if is_internal:
+            # Internal link: increment internal depth, reset external depth
+            return (url, current_internal_depth + 1, 0)
+        else:
+            # External link: keep internal depth, increment external depth
+            # If we're coming from internal (ext_depth=0), this is first external hop
+            new_ext_depth = current_ext_depth + 1 if current_ext_depth > 0 else 1
+            return (url, current_internal_depth, new_ext_depth)
+
     def _is_content_url(self, href: str, base_domain: str) -> bool:
-        """Check if URL is internal content (not static asset or utility page).
+        """Check if URL is content (not static asset or utility page).
 
         This is a simple filter - accepts anything that's:
-        1. On the same domain
+        1. On the same domain (or any domain if follow_external=True)
         2. Not a static asset (css, js, images, fonts)
         3. Not a utility link (mailto, javascript, anchor)
         """
@@ -202,11 +259,12 @@ class SpiderCrawler:
         if any(href.lower().endswith(ext) for ext in static_extensions):
             return False
 
-        # Check if it's an external link
-        if href.startswith(("http://", "https://")):
-            parsed = urlparse(href)
-            if parsed.netloc != base_domain:
-                return False
+        # Check if it's an external link (only filter if not following external)
+        if not self.follow_external:
+            if href.startswith(("http://", "https://")):
+                parsed = urlparse(href)
+                if parsed.netloc != base_domain:
+                    return False
 
         # Skip the base URL itself (index page)
         path = urlparse(href).path if href.startswith("http") else href
